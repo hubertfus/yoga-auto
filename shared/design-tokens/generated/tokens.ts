@@ -38,6 +38,34 @@ export const tokens = {
       "dim": "0.75"
     }
   },
+  "material": {
+    "dark": {
+      "glass-alpha": "66%",
+      "glass-alpha-strong": "82%",
+      "glass-alpha-clear": "34%",
+      "glass-bright": "0.78",
+      "glass-flat": "oklch(25% 0.02 260)",
+      "glass-flat-strong": "oklch(20% 0.02 260)",
+      "specular": "rgb(255 255 255 / 0.20)",
+      "text-halo": "0 1px 2px rgb(0 0 0 / 0.5)",
+      "scrim": "rgb(0 0 0 / 0.45)"
+    },
+    "light": {
+      "glass-alpha": "58%",
+      "glass-alpha-strong": "80%",
+      "glass-alpha-clear": "32%",
+      "glass-bright": "1.04",
+      "glass-flat": "oklch(96% 0.005 260)",
+      "glass-flat-strong": "oklch(94% 0.01 260)",
+      "specular": "rgb(255 255 255 / 0.65)",
+      "text-halo": "0 1px 1px rgb(255 255 255 / 0.45)",
+      "scrim": "rgb(0 0 0 / 0.25)"
+    },
+    "night": {
+      "glass-bright": "0.66",
+      "specular": "rgb(255 230 200 / 0.12)"
+    }
+  },
   "radius": {
     "xs": "10px",
     "sm": "16px",

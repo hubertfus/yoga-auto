@@ -14,4 +14,8 @@ export interface FrameStats {
   p99: number;
   fps: number;
   samples: number;
+  /** najdłuższa klatka w oknie (ms) */
+  max?: number;
+  /** klatki dłuższe niż 1.5× mediana (pominięty vsync) */
+  dropped?: number;
 }

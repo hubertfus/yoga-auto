@@ -4,3 +4,8 @@ export * from "./surface.tsx";
 export * from "./controls.tsx";
 export * from "./chrome.tsx";
 export * from "./gauges.tsx";
+export * from "./spring.ts";
+export { filtersMarkup, injectFilters, refractFilters, RefractFilterRegistry, FILTER_HOST_ID } from "./refraction/filters.ts";
+export { DisplacementCache } from "./refraction/cache.ts";
+export { computeDisplacementMap, lensStrength, squircleHeight, mapKey } from "./refraction/displacement.ts";
+export type { MapParams, RawMap } from "./refraction/displacement.ts";

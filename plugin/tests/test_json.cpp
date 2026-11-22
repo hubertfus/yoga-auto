@@ -37,8 +37,8 @@ TEST_CASE("JsonWriter: liczby — float najkrótszy zapis, NaN/Inf → null, -0 
 TEST_CASE("JsonWriter: escapowanie i UTF-8") {
     std::string s;
     JsonWriter w(s);
-    w.value(std::string_view("a\"b\c\n\t\x01 zażółć"));
-    CHECK(s == "\"a\\\"b\\c\n\t\u0001 zażółć\"");
+    w.value(std::string_view("a\"b\\c\n\t\x01 zażółć"));
+    CHECK(s == "\"a\\\"b\\\\c\\n\\t\\u0001 zażółć\"");
 }
 
 TEST_CASE("json_parse: round-trip i błędy") {

@@ -20,7 +20,7 @@ set(COMMON_DEFS WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 function(yoga_warnings target)
   if(MSVC)
-    target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8 /EHsc)
+    target_compile_options(${target} PRIVATE /W4 /WX /wd4324 /permissive- /utf-8 /EHsc)
   endif()
 endfunction()
 

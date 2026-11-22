@@ -517,6 +517,14 @@ export class MockSource implements TelemetrySource {
       "trailer.0.wear.wheels": 0.01,
       "trailer.0.wear.body": 0.01,
     };
+    // hello ogłasza trailer.0..9 — pierwsza ramka tel musi mieć pełny zestaw kanałów (PROTOCOL.md §5)
+    for (let i = 1; i < 10; i++) {
+      ch[`trailer.${i}.connected`] = false;
+      ch[`trailer.${i}.cargo.damage`] = 0;
+      ch[`trailer.${i}.wear.chassis`] = 0;
+      ch[`trailer.${i}.wear.wheels`] = 0;
+      ch[`trailer.${i}.wear.body`] = 0;
+    }
     const changed: Record<string, V> = {};
     for (const [k, v] of Object.entries(ch)) {
       const key = typeof v === "object" ? JSON.stringify(v) : String(v);

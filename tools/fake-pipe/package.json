@@ -1,0 +1,22 @@
+{
+  "name": "@yoga-auto/fake-pipe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Udawany plugin gry: serwer named pipe yoga-auto (IPC v1) z trybami awarii. Właściciel: S7.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "fake-pipe": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "node src/cli.ts"
+  },
+  "dependencies": {
+    "@yoga-auto/protocol": "*",
+    "@yoga-auto/mock": "*"
+  }
+}

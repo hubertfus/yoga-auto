@@ -1,0 +1,103 @@
+{
+  "maxFrameBytes": 262144,
+  "cases": [
+    {
+      "file": "valid-hello.bin",
+      "expect": "messages",
+      "t": ["hello"],
+      "note": "fixture ipc/hello.json"
+    },
+    {
+      "file": "valid-in-press.bin",
+      "expect": "messages",
+      "t": ["in"],
+      "note": "fixture ipc/in-press.json"
+    },
+    {
+      "file": "valid-tel.bin",
+      "expect": "messages",
+      "t": ["tel"],
+      "note": "fixture ipc/tel.json"
+    },
+    {
+      "file": "valid-stream-all.bin",
+      "expect": "messages",
+      "t": ["hello", "in", "tel"],
+      "note": "wszystkie fixture'y IPC jedna po drugiej; podawaj w kawałkach 1, 3, 7 bajtów i całością"
+    },
+    {
+      "file": "valid-unicode.bin",
+      "expect": "messages",
+      "t": ["log"],
+      "note": "długość w bajtach UTF-8 (ą, 🚚)"
+    },
+    {
+      "file": "valid-max-size.bin",
+      "expect": "messages",
+      "t": ["log"],
+      "note": "payload dokładnie 262144 B — dozwolony"
+    },
+    {
+      "file": "invalid-oversize.bin",
+      "expect": "too_large",
+      "note": "nagłówek mówi 262145 B (> limit): zerwij połączenie, nie czekaj na payload"
+    },
+    {
+      "file": "invalid-huge-length.bin",
+      "expect": "too_large",
+      "note": "długość 0xFFFFFFFF"
+    },
+    {
+      "file": "invalid-not-json.bin",
+      "expect": "bad_json",
+      "note": "payload `{oops` — pomiń ramkę, połączenie żyje"
+    },
+    {
+      "file": "invalid-empty.bin",
+      "expect": "bad_json",
+      "note": "długość 0 — pusty payload nie jest JSON-em"
+    },
+    {
+      "file": "invalid-utf8.bin",
+      "expect": "bad_json",
+      "note": "bajty 0xFF 0xFE w środku — niepoprawny UTF-8"
+    },
+    {
+      "file": "invalid-json-null.bin",
+      "expect": "bad_json",
+      "note": "payload `null` — poprawny JSON, ale nie wiadomość IPC (brak `t`): odrzuć"
+    },
+    {
+      "file": "invalid-json-array.bin",
+      "expect": "bad_json",
+      "note": "payload `[1,2,3]` — poprawny JSON, ale nie wiadomość IPC (brak `t`): odrzuć"
+    },
+    {
+      "file": "invalid-json-number.bin",
+      "expect": "bad_json",
+      "note": "payload `42` — poprawny JSON, ale nie wiadomość IPC (brak `t`): odrzuć"
+    },
+    {
+      "file": "invalid-json-no-t.bin",
+      "expect": "bad_json",
+      "note": "payload `{\"foo\":1}` — poprawny JSON, ale nie wiadomość IPC (brak `t`): odrzuć"
+    },
+    {
+      "file": "incomplete-header.bin",
+      "expect": "incomplete",
+      "note": "tylko 3 bajty nagłówka: czekaj na resztę, nic nie emituj"
+    },
+    {
+      "file": "incomplete-body.bin",
+      "expect": "incomplete",
+      "note": "nagłówek + część payloadu: czekaj, nic nie emituj"
+    },
+    {
+      "file": "mixed-good-bad-good.bin",
+      "expect": "messages",
+      "events": ["message", "bad_json", "message"],
+      "t": ["hb", "hb"],
+      "note": "hb, śmieć o poprawnej długości, hb — po złej ramce parser nadal czyta następną"
+    }
+  ]
+}

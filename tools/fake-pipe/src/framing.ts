@@ -28,7 +28,11 @@ export type DecodeResult =
  * Po `too_large` dekoder się zatrzymuje (jak plugin/bridge: zrywamy połączenie).
  */
 export class FrameDecoder {
-  private buf: Buffer = Buffer.alloc(0);
+  private chunks: Buffer[] = [];
+  private size = 0;
+  /** ile bajtów potrzeba do następnej decyzji: 4 (nagłówek) albo 4 + długość (cała ramka) */
+  private need = 4;
+  private haveHeader = false;
   private dead = false;
   readonly maxBytes: number;
 
@@ -38,30 +42,45 @@ export class FrameDecoder {
 
   push(chunk: Buffer): DecodeResult[] {
     if (this.dead) return [];
-    this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
+    this.chunks.push(chunk);
+    this.size += chunk.length;
     const out: DecodeResult[] = [];
-    while (this.buf.length >= 4) {
-      const len = this.buf.readUInt32LE(0);
-      if (len > this.maxBytes) {
-        this.dead = true;
-        out.push({ ok: false, error: "too_large", bytes: 4, length: len });
-        this.buf = Buffer.alloc(0);
-        return out;
+    // sklejamy dopiero, gdy jest komplet bajtów do kolejnego kroku (bez kwadratowego kopiowania przy małych kawałkach)
+    while (this.size >= this.need) {
+      const buf = this.chunks.length === 1 ? this.chunks[0]! : Buffer.concat(this.chunks, this.size);
+      this.chunks = [buf];
+      if (!this.haveHeader) {
+        const len = buf.readUInt32LE(0);
+        if (len > this.maxBytes) {
+          this.dead = true;
+          this.chunks = [];
+          this.size = 0;
+          out.push({ ok: false, error: "too_large", bytes: 4, length: len });
+          return out;
+        }
+        this.haveHeader = true;
+        this.need = 4 + len;
+        if (this.size < this.need) break;
       }
-      if (this.buf.length < 4 + len) break;
-      const body = this.buf.subarray(4, 4 + len);
-      this.buf = this.buf.subarray(4 + len);
+      const body = buf.subarray(4, this.need);
+      const rest = buf.subarray(this.need);
+      const bytes = this.need;
+      this.chunks = rest.length ? [rest] : [];
+      this.size = rest.length;
+      this.need = 4;
+      this.haveHeader = false;
       try {
-        out.push({ ok: true, msg: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)), bytes: 4 + len });
+        out.push({ ok: true, msg: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)), bytes });
       } catch {
-        out.push({ ok: false, error: "bad_json", bytes: 4 + len });
+        out.push({ ok: false, error: "bad_json", bytes });
       }
     }
     return out;
   }
 
+  /** bajty zbuforowane, czekające na resztę ramki */
   get pending(): number {
-    return this.buf.length;
+    return this.size;
   }
 }
 

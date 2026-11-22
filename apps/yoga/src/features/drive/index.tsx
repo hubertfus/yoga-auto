@@ -45,7 +45,7 @@ function DriveScreen() {
             label="Obroty silnika"
             tickLabel={(v) => String(v / 100)}
           >
-            <div style={{ textAlign: "center" }}>
+            <div style={{ textAlign: "center", transform: "translateY(22%)" }}>
               <div style={{ font: "var(--t-display)" }}>
                 <FastNumeric key={u.speed} select={(f) => f.speed} format={(v) => formatSpeed(v, u)} />
               </div>

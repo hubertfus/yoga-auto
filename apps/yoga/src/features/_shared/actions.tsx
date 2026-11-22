@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 import { GlassButton, Icon, type Tone } from "@yoga-auto/glass-ui";
 import { ACTIONS, type ActionId, type FastState, type SlowState } from "@yoga-auto/protocol";
 import { commands, holdEnd, holdStart, sendCmd, useOptimistic, usePending } from "../../core/commands.ts";
-import { useFast, useSlow, useStatus } from "../../core/store.ts";
+import { store, useFast, useSlow, useStatus } from "../../core/store.ts";
 
 // ─── stan przycisku z telemetrii (czyste funkcje, testowane) ───
 
@@ -83,7 +83,9 @@ const OPTIMISTIC_TOGGLES: ReadonlySet<ActionId> = new Set<ActionId>([
   "liftAxle.toggle",
   "trailerLiftAxle.toggle",
 ]);
-export const isOptimisticToggle = (id: ActionId): boolean => OPTIMISTIC_TOGGLES.has(id);
+/** Optymizm tylko tam, gdzie wynik jest przewidywalny (drogowe działają wyłącznie przy włączonych mijania). */
+export const isOptimisticToggle = (id: ActionId, f: FastState = store.state.fast): boolean =>
+  OPTIMISTIC_TOGGLES.has(id) && (id !== "lights.high" || f.lights.low);
 
 // ─── akcje niedostępne ───
 

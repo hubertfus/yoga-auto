@@ -99,7 +99,7 @@ function GroupActions({ group }: { group: ActionGroup }) {
   );
 }
 
-function VehicleScreen() {
+export function VehicleScreen() {
   const status = useStatus();
   const known = new Set(GROUP_ORDER.map((g) => g.group));
   const extra = [...new Set(ids.map((id) => ACTIONS[id].group))].filter((g) => !known.has(g));

@@ -25,7 +25,7 @@ export function LightsModeControl() {
   const pending = usePending("lights.mode");
   const inputEnabled = useStatus().inputEnabled;
   return (
-    <div style={inputEnabled ? undefined : { opacity: 0.4, pointerEvents: "none" }} title={inputEnabled ? undefined : "Sterowanie wyłączone w bridge"}>
+    <div data-action="lights.mode" style={inputEnabled ? undefined : { opacity: 0.4, pointerEvents: "none" }} title={inputEnabled ? undefined : "Sterowanie wyłączone w bridge"}>
       <GlassSegmented<LightsMode>
         options={LIGHTS_OPTIONS}
         value={mode}

@@ -35,7 +35,8 @@ export function NavSummary({ large }: { large?: boolean }) {
       </div>
       {hasRoute ? (
         <div className="ft-dim ft-mid" data-testid="nav-eta">
-          ETA {formatDuration(time)} <span className="ft-dimmer">→ {formatArrival(gameNow, time)}</span>
+          <div>ETA {formatDuration(time)}</div>
+          <div className="ft-dimmer">→ {formatArrival(gameNow, time)}</div>
         </div>
       ) : (
         <div className="ft-dimmer">Brak trasy</div>

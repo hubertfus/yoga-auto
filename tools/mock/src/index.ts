@@ -92,8 +92,8 @@ const JOB_ATTRS: Record<string, V> = {
   "source.company": "Tradeaux",
   "destination.city.id": "hamburg",
   "destination.city": "Hamburg",
-  "destination.company.id": "lkw",
-  "destination.company": "LKW",
+  "destination.company.id": "rt_log", // firma istniejąca w grafie dróg (trasa GPS działa też na mocku)
+  "destination.company": "RT Log",
   "job.market": "freight_market",
   "is.cargo.loaded": true,
   "special.job": false,

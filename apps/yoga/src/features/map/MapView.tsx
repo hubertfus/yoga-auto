@@ -4,11 +4,14 @@
  * aktualizowane w rAF poza Reactem (bez re-renderów). Podczas panningu/zoomu tier spada lokalnie do `lite`.
  */
 import { useEffect, useRef, useState } from "react";
-import type { Map as MlMap, Marker } from "maplibre-gl";
+import type { GeoJSONSource, GeoJSONSourceSpecification, Map as MlMap, Marker } from "maplibre-gl";
+
+type GeoJSONSourceData = Exclude<GeoJSONSourceSpecification["data"], string>;
+import type { RouteInfo } from "@yoga-auto/protocol";
 import { springs } from "@yoga-auto/design-tokens";
 import { perfStore } from "@yoga-auto/glass-ui";
 import { client } from "../../core/client.ts";
-import { useFastValue } from "../../core/store.ts";
+import { store, useFastValue } from "../../core/store.ts";
 import {
   DEFAULT_PROJECTION,
   gameToLonLat,
@@ -17,7 +20,7 @@ import {
   type ProjectionConfig,
 } from "./projection.ts";
 import { normalizeBearing, springStep, unwrapAngle, type Spring1D } from "./spring.ts";
-import { buildStyle, readMapColors } from "./style.ts";
+import { buildStyle, readMapColors, type MapColors } from "./style.ts";
 import { createTierDrop } from "./tierDrop.ts";
 import { pmtilesProtocol, probeTiles, type TileProbe } from "./tiles.ts";
 
@@ -55,6 +58,57 @@ export interface MapViewProps {
   /** uchwyt do przycisków zewnętrznych */
   controlsRef?: { current: MapControls | null };
   className?: string;
+}
+
+/** GeoJSON trasy (linia + punkt celu) w lon/lat. */
+export function routeGeoJson(route: RouteInfo | null, cfg: ProjectionConfig): GeoJSONSourceData {
+  if (!route || route.points.length < 4) return { type: "FeatureCollection", features: [] };
+  const coords: [number, number][] = [];
+  for (let i = 0; i + 1 < route.points.length; i += 2) {
+    const { lon, lat } = gameToLonLat(route.points[i]!, route.points[i + 1]!, cfg);
+    coords.push([lon, lat]);
+  }
+  return {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: { kind: "line" }, geometry: { type: "LineString", coordinates: coords } },
+      { type: "Feature", properties: { kind: "dest" }, geometry: { type: "Point", coordinates: coords.at(-1)! } },
+    ],
+  };
+}
+
+function addRouteLayers(map: MlMap, colors: MapColors): void {
+  if (map.getSource("route")) return;
+  map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  const w = (base: number) => ["interpolate", ["exponential", 1.5], ["zoom"], 5, base * 0.5, 10, base * 1.2, 14, base * 2.6, 18, base * 6];
+  map.addLayer({
+    id: "route-casing",
+    type: "line",
+    source: "route",
+    filter: ["==", ["get", "kind"], "line"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": colors.bg, "line-opacity": 0.85, "line-width": w(4.2) as never },
+  });
+  map.addLayer({
+    id: "route-line",
+    type: "line",
+    source: "route",
+    filter: ["==", ["get", "kind"], "line"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": colors.accent, "line-width": w(2.6) as never },
+  });
+  map.addLayer({
+    id: "route-dest",
+    type: "circle",
+    source: "route",
+    filter: ["==", ["get", "kind"], "dest"],
+    paint: {
+      "circle-radius": 9,
+      "circle-color": colors.accent,
+      "circle-stroke-color": "#fff",
+      "circle-stroke-width": 3,
+    },
+  });
 }
 
 const SPRING = springs.smooth;
@@ -118,6 +172,8 @@ export function MapView({
     let raf = 0;
     let endTimer: ReturnType<typeof setTimeout> | undefined;
     let dropped = false;
+    let applyRoute = () => {};
+    let unsubRoute = () => {};
     // dopóki palec/mysz jest na mapie, nie ruszamy kamery (jumpTo przerywa gest przeciągania/pinch)
     const pointers = new Set<number>();
     const down = (e: PointerEvent) => void pointers.add(e.pointerId);
@@ -147,9 +203,10 @@ export function MapView({
       const maplibregl = ml.default ?? ml;
       maplibregl.addProtocol("pmtiles", pmtilesProtocol().tile);
       const t0 = target.current;
+      const colors = readMapColors();
       map = new maplibregl.Map({
         container: el,
-        style: buildStyle(readMapColors(), probe.tiles),
+        style: buildStyle(colors, probe.tiles),
         center: t0 ? [t0.lon, t0.lat] : [probe.tiles ? 10 : 15, 50],
         zoom,
         maxZoom: 18,
@@ -161,6 +218,22 @@ export function MapView({
       });
       map.touchZoomRotate.disableRotation();
       (window as unknown as { __map?: MlMap }).__map = map;
+
+      // trasa GPS (z bridge'a, wiadomość `route`)
+      let shownRoute: RouteInfo | null | undefined;
+      let styleReady = false;
+      applyRoute = () => {
+        if (!map || !styleReady || store.route === shownRoute) return;
+        shownRoute = store.route;
+        (map.getSource("route") as GeoJSONSource | undefined)?.setData(routeGeoJson(shownRoute, projRef.current));
+      };
+      map.on("load", () => {
+        if (!map) return;
+        addRouteLayers(map, colors);
+        styleReady = true;
+        applyRoute();
+      });
+      unsubRoute = store.subscribe(() => applyRoute());
 
       const dot = document.createElement("div");
       dot.className = "map-truck";
@@ -234,6 +307,7 @@ export function MapView({
 
     return () => {
       disposed = true;
+      unsubRoute();
       cancelAnimationFrame(raf);
       clearTimeout(endTimer);
       el.removeEventListener("pointerdown", down);
@@ -241,7 +315,8 @@ export function MapView({
       window.removeEventListener("pointercancel", up);
       if (dropped) localTier.end();
       if (controlsRef) controlsRef.current = null;
-      delete (window as unknown as { __map?: MlMap }).__map;
+      const w = window as unknown as { __map?: MlMap };
+      if (w.__map === map) delete w.__map; // inny widok mapy (np. Home → ekran Mapa) mógł już podmienić uchwyt
       marker?.remove();
       map?.remove();
     };

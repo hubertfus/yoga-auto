@@ -6,6 +6,7 @@ import type { ActionId } from "./actions.ts";
 import type { Alert } from "./alerts.ts";
 import type { GameEvent } from "./events.ts";
 import type { MediaAction, MediaState } from "./media.ts";
+import type { RouteMsg } from "./route.ts";
 import type { ConfigState, Delta, FastState, FullState, GameStatus, SlowState } from "./state.ts";
 
 // ═══════════════════════════════ bridge → UI ═══════════════════════════════
@@ -22,6 +23,8 @@ export interface HelloMsg {
     media: boolean;
     map: boolean;
     record: boolean;
+    /** bridge liczy trasę GPS (jest `route-graph.bin`); brak pola = nie */
+    route?: boolean;
   };
   rates: { fastHz: number; slowHz: number };
 }
@@ -129,7 +132,8 @@ export type ServerMsg =
   | AlertsMsg
   | MediaMsg
   | AckMsg
-  | PongMsg;
+  | PongMsg
+  | RouteMsg;
 
 // ═══════════════════════════════ UI → bridge ═══════════════════════════════
 

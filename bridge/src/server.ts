@@ -41,6 +41,8 @@ import { StateStore } from "./store.ts";
 import { ClientStream } from "./throttle.ts";
 import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
 import { JobHistory, MemoryJobStorage, type JobStorage } from "./jobs.ts";
+import type { RouteGraph } from "./route/graph.ts";
+import { RouteService } from "./route/service.ts";
 
 /**
  * Hook nagrywania sesji (implementacja: `YarecRecorder` z tools/recorder, S7). Strukturalny, żeby
@@ -85,6 +87,8 @@ export interface BridgeOptions {
   staticDir?: string;
   /** katalog z `*.pmtiles` (M4) */
   tilesDir?: string;
+  /** graf dróg do trasy GPS (`route-graph.bin`); brak = bez trasy */
+  routeGraph?: RouteGraph | null;
   modules?: BridgeModule[];
   /** false = komendy `cmd` odrzucane jako `input_disabled` (config.json: inputEnabled) */
   inputEnabled?: boolean;
@@ -184,7 +188,14 @@ export async function startBridge(opts: BridgeOptions) {
     send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
   };
 
-  const capabilities = { input: opts.inputEnabled !== false, media: modules.some((m) => m.capability === "media"), map: false, record: !!opts.recorder };
+  const routes = opts.routeGraph ? new RouteService(opts.routeGraph, log) : null;
+  const capabilities = {
+    input: opts.inputEnabled !== false,
+    media: modules.some((m) => m.capability === "media"),
+    map: false,
+    record: !!opts.recorder,
+    route: !!routes,
+  };
 
   // ─── źródło telemetrii ───
   opts.source.onMessage((m: SourceMsg) => {
@@ -316,6 +327,14 @@ export async function startBridge(opts: BridgeOptions) {
     store.setSlow("trip", trip.update(store.state, now));
     tripB.update(store.state, now);
     setTripB();
+    if (routes) {
+      try {
+        const r = routes.update(store.state, now);
+        if (r !== undefined) broadcast({ t: "route", ts: now, route: r });
+      } catch (e) {
+        log("error", `route: ${String(e)}`);
+      }
+    }
     const delta = alertEngine.update(store.state, now);
     if (delta) {
       store.setAlerts(alertEngine.alerts);
@@ -419,6 +438,7 @@ export async function startBridge(opts: BridgeOptions) {
       rates: { fastHz: c.stream.fastHz, slowHz },
     });
     snapshot(c);
+    if (routes?.route) send(c, { t: "route", ts: Date.now(), route: routes.route });
     connectHandlers.forEach((h) => h(c.id));
     ws.on("message", (data) => {
       let parsed: unknown;

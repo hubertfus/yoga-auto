@@ -16,6 +16,7 @@ import {
   type GameStatus,
   type HelloMsg,
   type MediaState,
+  type RouteInfo,
   type ServerMsg,
   type SlowState,
 } from "@yoga-auto/protocol";
@@ -68,6 +69,8 @@ const initialConn = (): ConnectionInfo => ({
 
 export class TelemetryStore {
   state: FullState = emptyFullState();
+  /** trasa GPS liczona przez bridge (wiadomość `route`), poza `FullState` — przychodzi rzadko i jest duża */
+  route: RouteInfo | null = null;
   conn: ConnectionInfo = initialConn();
   lastSeq = 0;
   /** wysłano `resync`, czekamy na snapshot — nie spamujemy kolejnymi */
@@ -103,6 +106,7 @@ export class TelemetryStore {
   /** Czyści stan (testy, zmiana sesji bridge'a). */
   reset(): void {
     this.state = emptyFullState();
+    this.route = null;
     this.conn = initialConn();
     this.lastSeq = 0;
     this.resyncPending = false;
@@ -117,7 +121,10 @@ export class TelemetryStore {
     switch (msg.t) {
       case "hello": {
         // Zasada klienta 1: inna sesja = bridge zrestartowany → stan od zera.
-        if (this.conn.session && this.conn.session !== msg.session) this.state = emptyFullState();
+        if (this.conn.session && this.conn.session !== msg.session) {
+          this.state = emptyFullState();
+          this.route = null;
+        }
         // Nowe połączenie: licznik seq zaczyna się od snapshotu.
         this.lastSeq = 0;
         this.resyncPending = false;
@@ -155,6 +162,9 @@ export class TelemetryStore {
       }
       case "media":
         this.state = { ...this.state, media: msg.media };
+        break;
+      case "route":
+        this.route = msg.route;
         break;
       case "event":
         this.eventListeners.forEach((l) => l(msg.event));
@@ -243,6 +253,7 @@ export const useConfig = <T>(selector: (c: ConfigState) => T): T =>
 export const useStatus = (): GameStatus => useSelected(store.subscribe, () => store.state.status);
 export const useAlerts = (): Alert[] => useSelected(store.subscribe, () => store.state.alerts);
 export const useMedia = (): MediaState | null => useSelected(store.subscribe, () => store.state.media);
+export const useRoute = (): RouteInfo | null => useSyncExternalStore(store.subscribe, () => store.route);
 export const useConnection = (): ConnectionInfo => useSelected(store.subscribe, () => store.conn);
 /** Wybrany fragment informacji o połączeniu (mniej re-renderów niż useConnection). */
 export const useConnectionSelect = <T>(selector: (c: ConnectionInfo) => T): T =>

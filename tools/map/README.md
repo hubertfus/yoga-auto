@@ -44,5 +44,17 @@ Współrzędne gry (x, z) muszą trafić w te same lon/lat co kafle. README narz
 3. `npm run map:calibrate -w @yoga-auto/map-tools -- anchors.json tools/map/out/projection.json` — wypisze RMS (cel < 20 m gry).
 4. Wystaw `projection.json` obok `europe.pmtiles` (`/tiles/projection.json`). Bez niego marker będzie w złym miejscu (domyślne parametry są niezweryfikowane).
 
+## Trasa GPS (graf dróg) — `route-graph.bin`
+SDK gry nie podaje trasy z nawigacji, więc bridge liczy ją sam (A* po grafie dróg, od ciężarówki do firmy docelowej zlecenia) i wysyła do tabletu: linia trasy na mapie + manewry („za 300 m skręć w prawo”, „prosto przez 200 km”). Dystanse manewrów są w skali gry (×19 poza miastem, ×3 w mieście), jak w GPS w grze.
+
+Graf powstaje z tych samych danych parsera co kafle:
+1. `parser` (już w `map:build`) → `tools/map/.cache/parsed/europe-*.json`,
+2. `npx generator graph -m europe -i <parsed> -o tools/map/.cache/graph` (narzędzie truckermudgeon/maps),
+3. `npm run map:graph` → `tools/map/out/route-graph.bin` (~7,5 MB; format własny, opis w `bridge/src/route/graph.ts`).
+
+`map:build` robi kroki 2–3 automatycznie. Przy budowaniu w Dockerze (obraz z narzędziem): zamontuj katalog gry tylko do odczytu i `tools/map/.cache` jako `/work`, uruchom `npx parser -i /game -o /work/parsed` i `npx generator graph -m europe -i /work/parsed -o /work/graph`, potem na PC `npm run map:graph`.
+
+Bridge wczytuje `route-graph.bin` z katalogu kafli przy starcie (log: „trasa GPS: graf … węzłów”). Bez pliku trasa jest wyłączona, a tablet pokazuje „brak grafu dróg”. Po aktualizacji gry/DLC wygeneruj graf ponownie (nowe drogi i firmy).
+
 ## Uruchomienie aplikacji
 Mapa działa na mocku/replayu (`npm run dev:mock`, `npm run dev:replay`) — marker porusza się po pustym tle bez kafli; z kaflami i `projection.json` pokazuje drogi.

@@ -79,5 +79,19 @@ export const getEventPresenter = (kind: GameEventKind): EventPresenter | undefin
 export const getStatusItems = (side: StatusItemDef["side"]): StatusItemDef[] =>
   [...statusItems.values()].filter((s) => s.side === side).sort((a, b) => a.order - b.order);
 
-/** Domyślny układ Home (DESIGN.md §6.1). Id widgetów, których nie ma w rejestrze, są pomijane. */
-export const DEFAULT_HOME_LAYOUT: readonly string[] = ["speed", "nav", "job", "lights", "cruise", "media"];
+/** Domyślny układ Home (siatka 6×3: mapa 2×2, zegary, nawigacja, skróty w dolnym rzędzie). Id widgetów, których nie ma w rejestrze, są pomijane. */
+export const DEFAULT_HOME_LAYOUT: readonly string[] = [
+  "map",
+  "speed",
+  "nav",
+  "job",
+  "media",
+  "lights",
+  "sc.hazard",
+  "sc.parkingBrake",
+  "sc.engine",
+  "sc.beacon",
+  "sc.high",
+  "sc.trip",
+  "cruise",
+];

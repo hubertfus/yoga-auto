@@ -25,6 +25,7 @@ import {
   type TelemetrySource,
 } from "@yoga-auto/protocol";
 import { CommandRouter } from "./commands.ts";
+import { RateLimiter } from "./ratelimit.ts";
 import { mapGameplayEvent } from "./events.ts";
 import { RawChannels, applyConfig, applyTelemetry } from "./mapping.ts";
 import type { BridgeContext, BridgeModule, StaticHandler } from "./modules/types.ts";
@@ -98,10 +99,15 @@ export async function startBridge(opts: BridgeOptions) {
   let telAt = 0;
   const telLatency = new LatencyStats();
 
-  const router = new CommandRouter(
-    () => opts.source,
-    () => store.state.status,
-  );
+  const router = new CommandRouter({
+    source: () => opts.source,
+    state: () => {
+      if (telDirty) applyTel();
+      return store.state;
+    },
+    log,
+  });
+  const rate = new RateLimiter();
 
   const isOpen = (c: Client) => c.ws.readyState === c.ws.OPEN;
   const send = (c: Client, msg: ServerMsg) => {
@@ -131,9 +137,12 @@ export async function startBridge(opts: BridgeOptions) {
         break;
       case "disconnected":
         store.setStatus({ connected: false, inputActive: false });
+        router.onSourceDisconnected();
+        router.setInputs(null);
         log("warn", `source disconnected${m.reason ? `: ${m.reason}` : ""}`);
         break;
       case "hello":
+        router.setInputs(m.inputs);
         store.setStatus({
           connected: true,
           game: m.game.id === "eut2" ? "ets2" : "ats",
@@ -194,6 +203,7 @@ export async function startBridge(opts: BridgeOptions) {
   function applyTel() {
     applyTelemetry(store, raw);
     telDirty = false;
+    router.notifyState();
   }
 
   /** Wyślij `fast` każdemu klientowi, który jest „na czasie” i ma coś istotnego do dostania. */
@@ -349,8 +359,21 @@ export async function startBridge(opts: BridgeOptions) {
           if (typeof msg.placement === "boolean") c.stream.placement = msg.placement;
           break;
         case "cmd":
-          send(c, await router.handle(msg, c.id));
+        case "media":
+        case "trip.reset": {
+          const verdict = rate.hit(c.id);
+          if (verdict === "flood") {
+            log("warn", `client ${c.id} flooding commands, closing`);
+            ws.close(WsCloseCode.RateLimited, "rate limited");
+            return;
+          }
+          if (verdict === "limited") {
+            if (msg.t !== "trip.reset") send(c, { t: "ack", id: msg.id, ok: false, error: "rate_limited", tookMs: 0 });
+            return;
+          }
+          if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
           break;
+        }
         default:
           break;
       }
@@ -358,7 +381,11 @@ export async function startBridge(opts: BridgeOptions) {
     });
     ws.on("close", () => {
       clients.delete(c.id);
+      rate.forget(c.id);
+      const hadHolds = router.holdCount(c.id) > 0;
       router.releaseClient(c.id);
+      // ostatni klient z trzymanym wejściem odszedł: pas bezpieczeństwa po stronie pluginu
+      if (!clients.size && hadHolds) opts.source.send({ t: "releaseAll" });
       log("info", `client ${c.id} disconnected (${clients.size})`);
     });
   }

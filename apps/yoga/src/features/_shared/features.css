@@ -1,0 +1,60 @@
+/* Style widgetów i ekranów S5. Prefiks `ft-`. Tylko tokeny z design-tokens. */
+.ft-root { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; gap: var(--s-2); color: var(--text-1); }
+.ft-title { display: flex; align-items: center; gap: var(--s-2); font: var(--t-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); }
+.ft-nodata { color: var(--text-3); }
+.ft-unit { font: var(--t-h2); color: var(--text-2); margin-left: var(--s-2); }
+.ft-row { display: flex; align-items: center; gap: var(--s-3); }
+.ft-grow { flex: 1; min-width: 0; }
+.ft-spread { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); }
+.ft-big { font: var(--t-h1); font-variant-numeric: tabular-nums; line-height: 1; }
+.ft-mid { font: var(--t-h2); font-variant-numeric: tabular-nums; }
+.ft-dim { color: var(--text-2); }
+.ft-dimmer { color: var(--text-3); }
+.ft-tab { font-variant-numeric: tabular-nums; }
+
+.ft-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ft-stat__label { font: var(--t-caption); color: var(--text-3); letter-spacing: 0.04em; text-transform: uppercase; }
+.ft-stat__value { font: var(--t-h2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ft-stat__value small { font: var(--t-caption); color: var(--text-2); margin-left: 4px; }
+.ft-stat[data-tone="warn"] .ft-stat__value { color: var(--warn); }
+.ft-stat[data-tone="crit"] .ft-stat__value { color: var(--crit); }
+
+.ft-bar { --bar: var(--on); display: flex; gap: 3px; height: 10px; border-radius: var(--r-pill); background: color-mix(in oklch, var(--text-1) 14%, transparent); overflow: hidden; }
+.ft-bar > i { display: block; height: 100%; background: var(--bar); border-radius: var(--r-pill); transition: width var(--dur-smooth) var(--ease-smooth), background-color var(--dur-base) ease; }
+.ft-bar[data-tone="warn"] { --bar: var(--warn); }
+.ft-bar[data-tone="crit"] { --bar: var(--crit); }
+.ft-bar[data-segments] { background: none; overflow: visible; }
+.ft-bar[data-segments] > i { flex: 1; width: auto; border-radius: 3px; background: color-mix(in oklch, var(--text-1) 16%, transparent); }
+.ft-bar[data-segments] > i[data-on] { background: var(--bar); }
+
+/* znak ograniczenia prędkości */
+.ft-limit { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: oklch(98% 0 0); color: oklch(15% 0 0); border: 6px solid oklch(55% 0.24 27); font: 700 24px/1 var(--font-family); font-variant-numeric: tabular-nums; flex: none; }
+.ft-limit[data-none] { background: transparent; color: var(--text-3); border-color: color-mix(in oklch, var(--text-1) 25%, transparent); border-style: dashed; }
+.ft-limit[data-big] { width: 120px; height: 120px; border-width: 10px; font-size: 44px; }
+
+/* bieg: animacja zmiany */
+.ft-gear { display: inline-grid; place-items: center; min-width: 48px; height: 48px; padding: 0 var(--s-2); border-radius: var(--r-sm); background: color-mix(in oklch, var(--text-1) 12%, transparent); font: 700 28px/1 var(--font-family); animation: ft-gear-pop var(--dur-smooth) var(--ease-snappy) both; }
+@keyframes ft-gear-pop { from { transform: scale(1.35); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* przekroczenie prędkości: subtelny czerwony rim na całym kaflu (widget wypełnia padding karty) */
+.ft-rim::after { content: ""; position: absolute; inset: calc(var(--s-4) * -1); border-radius: var(--r-lg); pointer-events: none; opacity: 0; transition: opacity var(--dur-smooth) ease; box-shadow: inset 0 0 0 3px var(--crit), inset 0 0 28px color-mix(in oklch, var(--crit) 45%, transparent); }
+.ft-rim[data-over="true"]::after { opacity: 1; animation: ft-rim-pulse 1.6s ease-in-out infinite; }
+@keyframes ft-rim-pulse { 50% { opacity: 0.55; } }
+
+/* kierunkowskazy: mruganie sterowane żarówkami z telemetrii (lights.blinker*On) */
+.ft-blinker { display: inline-grid; place-items: center; color: color-mix(in oklch, var(--text-1) 22%, transparent); transition: color 60ms linear, filter 60ms linear; }
+.ft-blinker[data-on="true"] { color: var(--on); filter: drop-shadow(0 0 10px var(--on)); }
+
+.ft-overtext[data-over="true"] { color: var(--crit); }
+.ft-overtext { transition: color var(--dur-smooth) ease; }
+
+/* ekrany */
+.ft-screen { display: flex; flex-direction: column; gap: var(--s-4); height: 100%; min-height: 0; padding: var(--s-2); overflow: auto; overscroll-behavior: contain; }
+.ft-section { display: grid; grid-template-columns: 150px 1fr; gap: var(--s-3); align-items: center; padding: var(--s-2) 0; }
+.ft-section__title { font: var(--t-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); }
+.ft-section__body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ft-gear { animation: none; }
+  .ft-rim[data-over="true"]::after { animation: none; }
+}

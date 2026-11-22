@@ -1,0 +1,20 @@
+{
+  "name": "@yoga-auto/bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark fps dashboardu (Playwright + CDP) i pomiar latencji gra → UI. Właściciel: S7.",
+  "bin": {
+    "bench": "src/cli.ts"
+  },
+  "scripts": {
+    "bench": "node src/cli.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.65.1",
+    "@yoga-auto/mock": "*",
+    "@yoga-auto/protocol": "*",
+    "playwright-core": "^1.65.1"
+  }
+}

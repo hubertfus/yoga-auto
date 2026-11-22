@@ -10,6 +10,8 @@ namespace yoga {
 std::wstring game_docs_dir();
 
 void log_open();
+/// Otwiera log pod wskazaną ścieżką (używane przez log_open oraz testy).
+void log_open_file(const std::wstring& path);
 void log_close();
 void logf(const char* level, const char* fmt, ...);
 /// Tylko do pliku (bez kopii dla bridge'a) — dla logów, które sesja IPC przekazała sama.

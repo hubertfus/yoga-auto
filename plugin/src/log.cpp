@@ -31,18 +31,30 @@ std::wstring game_docs_dir() {
     return dir;
 }
 
-void log_open() {
+namespace {
+void open_locked(const std::wstring& path, const std::wstring& oldPath) {
+    if (g_file || path.empty()) return;
+    struct _stat64 st{};
+    if (!oldPath.empty() && _wstat64(path.c_str(), &st) == 0 && st.st_size > kMaxLogBytes) {
+        MoveFileExW(path.c_str(), oldPath.c_str(), MOVEFILE_REPLACE_EXISTING);
+    }
+    // Bez "ccs=UTF-8": w UCRT ten tryb włącza _O_U8TEXT (tylko funkcje wide),
+    // przez co wąski fprintf() kończy proces błędem 0xc0000409 (__fastfail).
+    // Źródła kompilujemy z /utf-8, więc narrow char* ma już bajty UTF-8.
+    _wfopen_s(&g_file, path.c_str(), L"a");
+}
+}  // namespace
+
+void log_open_file(const std::wstring& path) {
     std::lock_guard lock(g_mutex);
-    if (g_file) return;
+    open_locked(path, {});
+}
+
+void log_open() {
     const std::wstring dir = game_docs_dir();
     if (dir.empty()) return;
-    const std::wstring path = dir + L"\\yoga-auto.log";
-    struct _stat64 st{};
-    if (_wstat64(path.c_str(), &st) == 0 && st.st_size > kMaxLogBytes) {
-        const std::wstring old = dir + L"\\yoga-auto.old.log";
-        MoveFileExW(path.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING);
-    }
-    _wfopen_s(&g_file, path.c_str(), L"a, ccs=UTF-8");
+    std::lock_guard lock(g_mutex);
+    open_locked(dir + L"\\yoga-auto.log", dir + L"\\yoga-auto.old.log");
 }
 
 void log_close() {

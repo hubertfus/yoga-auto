@@ -13,7 +13,9 @@
     "@yoga-auto/design-tokens": "*",
     "@yoga-auto/glass-ui": "*",
     "@yoga-auto/protocol": "*",
+    "maplibre-gl": "^5.0.0",
     "motion": "^14.14.0",
+    "pmtiles": "^4.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

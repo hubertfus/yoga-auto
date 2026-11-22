@@ -30,7 +30,9 @@
     "probe": "node tools/fake-pipe/src/probe.ts",
     "fake-pipe": "node tools/fake-pipe/src/cli.ts",
     "e2e": "npm run e2e -w @yoga-auto/e2e",
-    "bench": "npm run bench -w @yoga-auto/bench"
+    "bench": "npm run bench -w @yoga-auto/bench",
+    "map:build": "npm run map:build -w @yoga-auto/map-tools --",
+    "map:calibrate": "npm run map:calibrate -w @yoga-auto/map-tools --"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

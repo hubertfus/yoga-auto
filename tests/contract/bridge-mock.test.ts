@@ -111,7 +111,10 @@ async function runScenario(scenario: MockScenario, seconds: number): Promise<Res
       note("cmd.unknown");
     }
     if (tick === 30) client.send({ t: "resync" });
-    if (tick === 35) client.send({ t: "trip.reset", id: "tr1" });
+    if (tick === 35) {
+      client.send({ t: "trip.reset", id: "tr1" });
+      note("trip.reset");
+    }
     if (tick === 40) {
       client.sendRaw("{ not json");
       client.send({ t: "totally.new.message", x: 1 });
@@ -205,7 +208,7 @@ describe(`bridge on mock for ${SECONDS} s (all scenarios in parallel)`, async ()
           .client.of("ack")
           .map((a) => a.id);
         expect(new Set(ids).size, "duplicate acks").toBe(ids.length);
-        const expected = (r().sent["cmd.press"] ?? 0) + (r().sent["cmd.hold"] ?? 0) + (r().sent["cmd.unknown"] ?? 0);
+        const expected = (r().sent["cmd.press"] ?? 0) + (r().sent["cmd.hold"] ?? 0) + (r().sent["cmd.unknown"] ?? 0) + (r().sent["trip.reset"] ?? 0);
         expect(ids.length).toBe(expected);
       });
 

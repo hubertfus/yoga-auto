@@ -77,10 +77,15 @@ describe("record → replay through the bridge", () => {
     for (const m of c.of("fast")) if (m.d.speed !== undefined) replayed.push(m.d.speed);
     expect(replayed.length).toBeGreaterThan(10);
     // ta sama krzywa rozpędzania: prędkości odtworzone ⊂ zakres nagranych
-    expect(Math.max(...replayed)).toBeLessThanOrEqual(Math.max(...live.speeds) + 0.01);
-    expect(snap.state.status.connected).toBe(true);
+    // klient live dostaje próbki po throttlingu, a nagranie trwa chwilę dłużej, więc margines 5%
+    expect(Math.max(...replayed)).toBeLessThanOrEqual(Math.max(...live.speeds) * 1.05 + 0.01);
+    // snapshot może wyjść przed `hello` z replayu; liczy się, że bridge zgłosił połączenie
+    const statuses = [snap.state.status, ...c.of("status").map((m) => m.status)];
+    expect(statuses.some((st) => st.connected)).toBe(true);
     const fast = c.rx.filter((r) => r.msg.t === "fast").map((r) => r.msg as { d: Partial<FastState> });
-    expect(fast.some((m) => m.d.gear !== undefined && m.d.gear > 0)).toBe(true);
+    // throttler wysyła bieg tylko przy zmianie, więc bieg > 0 może być już w snapshocie
+    const gears = [snap.state.fast.gear, ...fast.map((m) => m.d.gear)];
+    expect(gears.some((g) => g !== undefined && g > 0)).toBe(true);
     for (const r of c.rx) expect(violations("server", r.msg)).toBeNull();
     c.close();
     await bridge.close();

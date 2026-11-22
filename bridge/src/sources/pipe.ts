@@ -3,6 +3,7 @@
  * F0: implementacja bazowa (connect/retry/parser/hb). S2: dopracowanie, testy z fake-pipe (S7).
  */
 import { connect, type Socket } from "node:net";
+import { isIpcFromPlugin } from "../guards.ts";
 import { PIPE_NAME, ipc, type SourceMsg, type TelemetrySource } from "@yoga-auto/protocol";
 
 export class PipeSource implements TelemetrySource {
@@ -46,7 +47,13 @@ export class PipeSource implements TelemetrySource {
   }
 
   private emit(m: SourceMsg) {
-    for (const h of this.handlers) h(m);
+    for (const h of this.handlers) {
+      try {
+        h(m);
+      } catch (e) {
+        if (m.t !== "log") this.emit({ t: "log", level: "error", msg: `handler threw: ${String(e)}` });
+      }
+    }
   }
 
   private connect() {
@@ -75,10 +82,22 @@ export class PipeSource implements TelemetrySource {
       if (this.buf.length < 4 + len) return;
       const body = this.buf.subarray(4, 4 + len).toString("utf8");
       this.buf = this.buf.subarray(4 + len);
+      let msg: unknown;
       try {
-        this.emit(JSON.parse(body) as ipc.IpcFromPlugin);
+        msg = JSON.parse(body);
       } catch {
         this.emit({ t: "log", level: "warn", msg: "bad frame" });
+        continue;
+      }
+      if (!isIpcFromPlugin(msg)) {
+        this.emit({ t: "log", level: "warn", msg: "bad frame (shape)" });
+        continue;
+      }
+      // wyjątki handlerów NIE są „bad frame”: loguj osobno, nie przerywaj parsera
+      try {
+        this.emit(msg as ipc.IpcFromPlugin);
+      } catch (e) {
+        this.emit({ t: "log", level: "error", msg: `handler threw: ${String(e)}` });
       }
     }
   }

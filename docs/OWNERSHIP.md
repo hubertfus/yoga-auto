@@ -6,7 +6,8 @@ Agent edytuje **tylko** katalogi swojego strumienia. Potrzebna zmiana gdzie indz
 |---|---|
 | `shared/protocol/**` | lead |
 | `package.json`, `package-lock.json`, `tsconfig*.json`, `vitest.config.ts`, `.gitignore`, `.github/**`, `scripts/**` | lead |
-| `docs/**` (poza `docs/proposals/`) | lead |
+| `docs/**` (poza `docs/proposals/` i `docs/progress/`) | lead |
+| `docs/progress/sN.md` | strumień SN (dziennik postępu do przejęcia pracy) |
 | `plugin/**` (poza `plugin/generated/`, który generuje `npm run gen`) | S1 |
 | `bridge/**` | S2 |
 | `packages/glass-ui/**`, `shared/design-tokens/**` | S3 |

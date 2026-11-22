@@ -3,6 +3,7 @@ import { normalizeBearing, springStep, unwrapAngle } from "./spring.ts";
 import { buildStyle, classifyLayer, FALLBACK_COLORS } from "./style.ts";
 import { createTierDrop } from "./tierDrop.ts";
 import { DEFAULT_PROJECTION } from "./projection.ts";
+import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 vi.mock("../../core/client.ts", () => ({ getToken: () => null }));
 
@@ -57,6 +58,12 @@ describe("style", () => {
     expect(ids.indexOf("fill-areas")).toBeLessThan(ids.indexOf("line-roads"));
     expect(ids).not.toContain("fill-roads");
     expect(JSON.stringify(s)).not.toMatch(/oklch/);
+  });
+
+  it("styl (z kaflami i bez) przechodzi walidację specyfikacji MapLibre", () => {
+    const tiles = { url: "http://x/a.pmtiles", layers: ["water", "roads", "motorway", "railways", "areas"] };
+    expect(validateStyleMin(buildStyle(FALLBACK_COLORS, tiles) as never)).toEqual([]);
+    expect(validateStyleMin(buildStyle(FALLBACK_COLORS, null) as never)).toEqual([]);
   });
 });
 

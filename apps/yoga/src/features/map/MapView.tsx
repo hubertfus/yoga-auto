@@ -118,6 +118,13 @@ export function MapView({
     let raf = 0;
     let endTimer: ReturnType<typeof setTimeout> | undefined;
     let dropped = false;
+    // dopóki palec/mysz jest na mapie, nie ruszamy kamery (jumpTo przerywa gest przeciągania/pinch)
+    const pointers = new Set<number>();
+    const down = (e: PointerEvent) => void pointers.add(e.pointerId);
+    const up = (e: PointerEvent) => void pointers.delete(e.pointerId);
+    el.addEventListener("pointerdown", down);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     const begin = () => {
       clearTimeout(endTimer);
       if (!dropped) {
@@ -218,7 +225,7 @@ export function MapView({
         const b = normalizeBearing(brg.x);
         marker.setLngLat([lon.x, lat.x]);
         marker.setRotation(b);
-        if (follow.current || !interactive) {
+        if ((follow.current || !interactive) && pointers.size === 0) {
           map.jumpTo({ center: [lon.x, lat.x], ...(headingUp.current ? { bearing: b } : {}) });
         }
       };
@@ -229,6 +236,9 @@ export function MapView({
       disposed = true;
       cancelAnimationFrame(raf);
       clearTimeout(endTimer);
+      el.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       if (dropped) localTier.end();
       if (controlsRef) controlsRef.current = null;
       delete (window as unknown as { __map?: MlMap }).__map;

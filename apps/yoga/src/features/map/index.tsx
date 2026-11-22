@@ -3,6 +3,7 @@ import { useRef, useState, type ComponentType } from "react";
 import { GlassButton, Icon } from "@yoga-auto/glass-ui";
 import { getScreen, registerScreen } from "../../core/registry.ts";
 import { MapView, type MapControls } from "./MapView.tsx";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./map.css";
 
 function MapScreen() {

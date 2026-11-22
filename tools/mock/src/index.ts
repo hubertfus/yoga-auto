@@ -25,6 +25,8 @@ export interface MockOptions {
   speed?: number;
   /** deterministyczny seed */
   seed?: number;
+  /** bez timera: czas „gry” posuwa wyłącznie `advance(dt)` (generowanie próbek, testy deterministyczne) */
+  manual?: boolean;
 }
 
 type V = ipc.IpcValue;
@@ -128,12 +130,14 @@ export class MockSource implements TelemetrySource {
   private holds = new Map<string, number>();
   private lastHb = Date.now();
   private inputEnabled = true;
+  private manual: boolean;
 
   constructor(opts: MockOptions = {}) {
     this.scenario = opts.scenario ?? "highway";
     this.fps = opts.fps ?? 60;
     this.timeScale = opts.speed ?? 1;
     this.rand = rng(opts.seed ?? 42);
+    this.manual = opts.manual ?? false;
     this.sim = this.initial();
   }
 
@@ -160,8 +164,14 @@ export class MockSource implements TelemetrySource {
     });
     if (this.sim.job) this.emit({ t: "cfg", id: "job", attrs: JOB_ATTRS });
     this.emit({ t: "input.active", device: "semantical", active: true });
+    if (this.manual) return;
     const dt = 1 / this.fps;
     this.timer = setInterval(() => this.step(dt * this.timeScale), 1000 / this.fps);
+  }
+
+  /** Tryb `manual`: jedna klatka „gry” o długości `dtSeconds` czasu symulacji (domyślnie 1/fps). */
+  advance(dtSeconds: number = 1 / this.fps): void {
+    this.step(dtSeconds);
   }
 
   async stop(): Promise<void> {

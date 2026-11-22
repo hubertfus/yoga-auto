@@ -28,7 +28,7 @@ export type DecodeResult =
  * Po `too_large` dekoder się zatrzymuje (jak plugin/bridge: zrywamy połączenie).
  */
 export class FrameDecoder {
-  private buf = Buffer.alloc(0);
+  private buf: Buffer = Buffer.alloc(0);
   private dead = false;
   readonly maxBytes: number;
 

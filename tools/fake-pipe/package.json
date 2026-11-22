@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@yoga-auto/protocol": "*",
-    "@yoga-auto/mock": "*"
+    "@yoga-auto/mock": "*",
+    "@yoga-auto/recorder": "*"
   }
 }

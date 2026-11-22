@@ -1,0 +1,48 @@
+# tools/map — kafle mapy dla yoga-auto (S8)
+
+Mapa w aplikacji (ekran `map`, tło ekranu `nav`) renderuje **MapLibre GL JS** z kafli **PMTiles**. Kafle powstają **raz**, z plików Twojej gry, zewnętrznym narzędziem [truckermudgeon/maps](https://github.com/truckermudgeon/maps) (**GPL-3.0**, patrz `LICENSE-NOTE.md`). Nic stąd nie jest pobierane ani uruchamiane automatycznie (ani przez `npm install`, ani przez `npm run check`).
+
+Bez kafli aplikacja pokazuje pusty ciemny kafel mapy z markerem ciężarówki i komunikatem „brak kafli, uruchom map:build”.
+
+## Wymagania
+- Node ≥ 24, `git`, `npm` w PATH.
+- `tippecanoe` w PATH (generator PMTiles): na Windows najprościej w **WSL** (`sudo apt install tippecanoe`, wtedy uruchom `map:build` z poziomu WSL) albo prebuilt.
+- Zainstalowane ETS2 z DLC map, które chcesz mieć na mapie (mody map nieobsługiwane przez narzędzie).
+- ~ kilka GB wolnego miejsca na dane pośrednie.
+
+## Co, skąd i ile `map:build` pobiera (dopiero po Twoim uruchomieniu)
+| Krok | Źródło | Rozmiar (szacunek) |
+|---|---|---|
+| `git clone --depth 1 --recurse-submodules` | https://github.com/truckermudgeon/maps → `tools/map/.cache/maps` | setki MB (z submodułami) |
+| `npm install` w klonie + build parsera (node-gyp) | rejestr npm | kilkaset MB |
+| `parser -i <gra> -o .cache/parsed` | czyta Twoje pliki gry (tylko odczyt) | wyjście: GB |
+| `generator map -m europe` | lokalnie, wymaga tippecanoe | wynik `europe.pmtiles`: setki MB |
+
+Skrypt zawsze pyta o zgodę przed pobraniem (pomiń: `--yes`). Sprawdzenie planu **bez pobierania**:
+
+```powershell
+npm run map:build -w @yoga-auto/map-tools -- --game "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" --dry-run
+```
+
+Właściwe uruchomienie:
+
+```powershell
+npm run map:build -w @yoga-auto/map-tools -- --game "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2"
+```
+
+Wynik: `tools/map/out/meta.json` (data, wersja gry z `version.txt`, lista `dlc_*.scs`, commit narzędzia). `europe.pmtiles` powstaje wg README narzędzia (komenda `generator map -m europe`; jeśli zapisze w innym miejscu, skopiuj go do `tools/map/out/`). Dodatkowe argumenty generatora: `--generator-args "..."`.
+> Uwaga: skrypt jest napisany wg opisu README narzędzia i **nie był uruchamiany** (nie pobieraliśmy danych). Kroki/flagi mogą wymagać korekty po pierwszym uruchomieniu.
+
+## Serwowanie kafli
+Docelowo bridge serwuje `GET /tiles/europe.pmtiles` (z `Range`, token `?k=`) — PROTOCOL §6; to zadanie S2 (zgłoszone: `docs/proposals/s8-tiles-serving.md`). Aplikacja szuka `/tiles/europe.pmtiles` i `/tiles/projection.json` pod adresem bridge'a. Na czas developmentu można je też położyć w `apps/yoga/public/tiles/` (tylko lokalnie; nie commitujemy).
+
+## Kalibracja projekcji (ważne dla dokładności)
+Współrzędne gry (x, z) muszą trafić w te same lon/lat co kafle. README narzędzia nie publikuje parametrów, a kodu GPL nie kopiujemy, więc `apps/yoga/src/features/map/projection.ts` ma model LCC + **kalibrację z kotwic**:
+
+1. Z danych wyjściowych narzędzia (np. lista miast: nazwa, x, z, lon, lat) wybierz 5–10 miast rozrzuconych po całej mapie.
+2. Zapisz `anchors.json`: `[{ "x": -31000, "z": -5500, "lon": 1.86, "lat": 50.95 }, ...]` (x, z w metrach gry, lon/lat w stopniach).
+3. `npm run map:calibrate -w @yoga-auto/map-tools -- anchors.json tools/map/out/projection.json` — wypisze RMS (cel < 20 m gry).
+4. Wystaw `projection.json` obok `europe.pmtiles` (`/tiles/projection.json`). Bez niego marker będzie w złym miejscu (domyślne parametry są niezweryfikowane).
+
+## Uruchomienie aplikacji
+Mapa działa na mocku/replayu (`npm run dev:mock`, `npm run dev:replay`) — marker porusza się po pustym tle bez kafli; z kaflami i `projection.json` pokazuje drogi.

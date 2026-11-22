@@ -6,6 +6,21 @@ CarPlay-like ekran do Euro Truck Simulator 2 na laptopie dotykowym (Lenovo Yoga)
 ETS2 ── plugin/yoga_auto.dll ──named pipe──▶ bridge (Node) ──WebSocket/LAN──▶ PWA na Yodze (Edge kiosk)
 ```
 
+## Jedno polecenie: `yoga.bat`
+
+Dwuklik albo w terminalu w korzeniu repo:
+
+| Polecenie | Co robi |
+|---|---|
+| `yoga.bat` | `npm install`, generatory, build PWA, build pluginu (CMake z VS Build Tools), kopia `yoga_auto.dll` do ETS2 (autowykrycie przez Steam), reguła zapory TCP 7420 dla sieci prywatnej (pyta o zgodę i admina), adresy dla Yogi, start bridge'a na grze |
+| `yoga.bat mock` | to samo bez pluginu, bridge na mocku (`-Scenario city-night` itd.) |
+| `yoga.bat replay` | bridge odtwarza nagranie jazdy (`-Replay <plik.yarec>`) |
+| `yoga.bat check` | `npm run check` |
+| `yoga.bat plugin` | tylko build pluginu i kopia DLL |
+| `yoga.bat help` | opcje: `-Ets2Dir`, `-Port`, `-SkipInstall`, `-SkipPlugin`, `-NoFirewall`, `-NoAuth`, `-NoStart` |
+
+Potem na Yodze otwórz w Edge adres wypisany w oknie i wpisz PIN z konsoli PC. Kiosk na stałe: [docs/kiosk.md](docs/kiosk.md). Logika: `scripts/yoga.ps1`.
+
 ## Szybki start (bez gry)
 
 ```powershell

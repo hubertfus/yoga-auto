@@ -4,14 +4,15 @@
  * S2: parowanie PIN + tokeny, progi throttlingu, alerty, trip, mDNS, recorder, rate limit.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { hostname } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { resolve } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   DEFAULT_FAST_HZ,
   DEFAULT_SLOW_HZ,
+  IPC_VERSION,
   KEYFRAME_INTERVAL_MS,
   PLACEMENT_MAX_HZ,
   PROTOCOL_MINOR,
@@ -19,16 +20,39 @@ import {
   WS_SUBPROTOCOL,
   WsCloseCode,
   type ClientMsg,
-  type InfoRes,
   type ServerMsg,
   type SourceMsg,
   type TelemetrySource,
 } from "@yoga-auto/protocol";
+import { hostAllowed, isPrivateAddress, originAllowed, type OriginPolicy } from "./access.ts";
+import { isClientFrame } from "./guards.ts";
+import { AlertEngine, type AlertThresholds } from "./alerts.ts";
 import { CommandRouter } from "./commands.ts";
+import type { DeviceStore } from "./devices.ts";
+import { authorize, createHttpHandler } from "./http.ts";
+import { PairingManager, type PinAnnouncement } from "./pairing.ts";
+import { RateLimiter } from "./ratelimit.ts";
 import { mapGameplayEvent } from "./events.ts";
 import { RawChannels, applyConfig, applyTelemetry } from "./mapping.ts";
 import type { BridgeContext, BridgeModule, StaticHandler } from "./modules/types.ts";
+import { LatencyStats } from "./metrics.ts";
 import { StateStore } from "./store.ts";
+import { ClientStream } from "./throttle.ts";
+import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
+
+/**
+ * Hook nagrywania sesji (implementacja: `YarecRecorder` z tools/recorder, S7). Strukturalny, żeby
+ * bridge nie zależał od pakietu rekordera.
+ */
+export interface Recorder {
+  readonly file: string;
+  /** wiadomość źródła (także connected/disconnected) */
+  ipc(msg: SourceMsg): void;
+  /** wiadomość bridge → UI (`clientId` gdy wysłana do jednego klienta) */
+  ws(msg: ServerMsg, clientId?: string): void;
+  flush(): void;
+  close(): Promise<void>;
+}
 
 export interface BridgeOptions {
   source: TelemetrySource;
@@ -36,54 +60,60 @@ export interface BridgeOptions {
   host?: string;
   fastHz?: number;
   slowHz?: number;
-  /** false = dev, bez tokenu */
+  /** false = dev (`--no-auth`), bez tokenu i parowania */
   auth: boolean;
-  /** tokeny akceptowane przy auth (S2: z devices.json) */
-  tokens?: Set<string>;
+  /** sparowane urządzenia (wymagane przy `auth: true`) */
+  devices?: DeviceStore;
+  /** wywoływane przy `/api/pair/start`: pokaż PIN na PC (konsola/tray) */
+  onPin?: (a: PinAnnouncement) => void;
+  /** co ile ms sprawdzać, czy CLI odwołało urządzenie (domyślnie 2000) */
+  devicePollMs?: number;
+  /** gdzie trzymać komputer pokładowy (domyślnie pamięć; CLI podaje FileTripStorage) */
+  tripStorage?: TripStorage;
+  /** nadpisanie progów alertów (testy) */
+  alertThresholds?: Partial<AlertThresholds>;
+  /** okres przeliczania alertów/tripu, ms (domyślnie 250) */
+  rulesEveryMs?: number;
+  /** dodatkowe dozwolone nazwy hostów (Host/Origin) */
+  extraHosts?: string[];
   staticDir?: string;
+  /** katalog z `*.pmtiles` (M4) */
+  tilesDir?: string;
   modules?: BridgeModule[];
+  /** false = komendy `cmd` odrzucane jako `input_disabled` (config.json: inputEnabled) */
+  inputEnabled?: boolean;
+  /** nagrywanie sesji do .yarec (`--record`) */
+  recorder?: Recorder;
   version?: string;
   log?: (level: "debug" | "info" | "warn" | "error", msg: string) => void;
 }
 
 interface Client {
   id: string;
+  /** id sparowanego urządzenia (null przy --no-auth) */
+  deviceId: string | null;
   ws: WebSocket;
-  fastHz: number;
-  placement: boolean;
-  /** harmonogram wysyłki fast (akumulowany, bo timery Windows mają ~15.6 ms rozdzielczości) */
-  nextFastAt: number;
-  lastPlacementAt: number;
+  /** throttling per klient: własny seq, własny obraz „co wysłano”, własny harmonogram fast */
+  stream: ClientStream;
 }
-
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".woff2": "font/woff2",
-  ".ico": "image/x-icon",
-};
 
 const BACKPRESSURE_BYTES = 64 * 1024;
 
-export function isPrivateAddress(addr: string | undefined): boolean {
-  if (!addr) return false;
-  const a = addr.replace(/^::ffff:/, "");
-  if (a === "::1" || a.startsWith("127.")) return true;
-  if (/^10\./.test(a) || /^192\.168\./.test(a) || /^169\.254\./.test(a)) return true;
-  const m = /^172\.(\d+)\./.exec(a);
-  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
-  return /^(fe80|fc|fd)/i.test(a);
-}
+export { isPrivateAddress };
 
 export async function startBridge(opts: BridgeOptions) {
   const log = opts.log ?? ((l, m) => console.log(`[${l}] ${m}`));
+  if (opts.auth && !opts.devices) throw new Error("auth: true wymaga opts.devices (DeviceStore)");
   const session = randomUUID().slice(0, 8);
+  const devices = opts.devices ?? null;
+  const policy: OriginPolicy = {
+    extraHosts: (opts.extraHosts ?? []).map((h) => h.toLowerCase()),
+    ownHostnames: [hostname().toLowerCase(), `${hostname().toLowerCase()}.local`],
+  };
+  const pairing =
+    opts.auth && devices
+      ? new PairingManager(devices, opts.onPin ?? ((a) => log("info", `PIN parowania: ${a.pin} (ważny ${a.expiresIn} s)`)))
+      : null;
   const fastHzDefault = opts.fastHz ?? DEFAULT_FAST_HZ;
   const slowHz = opts.slowHz ?? DEFAULT_SLOW_HZ;
   const store = new StateStore(opts.source.kind);
@@ -93,36 +123,83 @@ export async function startBridge(opts: BridgeOptions) {
   const msgHandlers = new Map<string, Set<(msg: ClientMsg, id: string) => void | Promise<void>>>();
   const connectHandlers = new Set<(id: string) => void>();
   const modules = opts.modules ?? [];
+  /** plugin z inną wersją IPC: ignoruj tel/cfg/evt do ponownego `hello` */
+  let ipcMismatch = false;
   let frame = 0;
   let telDirty = false;
+  /** performance.now() ostatniej ramki `tel` (latencja pipe → WS) */
+  let telAt = 0;
+  const telLatency = new LatencyStats();
 
-  const router = new CommandRouter(
-    () => opts.source,
-    () => store.state.status,
-  );
+  const router = new CommandRouter({
+    source: () => opts.source,
+    state: () => {
+      if (telDirty) applyTel();
+      return store.state;
+    },
+    log,
+  });
+  const rate = new RateLimiter();
+  const trip = new TripComputer(opts.tripStorage ?? new MemoryTripStorage());
+  const alertEngine = new AlertEngine(opts.alertThresholds);
+  store.setSlow("trip", trip.state);
 
+  /** błąd rekordera (dysk pełny itp.) nie może zatrzymać bridge'a */
+  const safeRecord = (fn: () => void) => {
+    try {
+      fn();
+    } catch (e) {
+      log("error", `recorder: ${String(e)}`);
+    }
+  };
+  const isOpen = (c: Client) => c.ws.readyState === c.ws.OPEN;
   const send = (c: Client, msg: ServerMsg) => {
-    if (c.ws.readyState === c.ws.OPEN) c.ws.send(JSON.stringify(msg));
+    if (!isOpen(c)) return;
+    c.ws.send(JSON.stringify(msg));
+    safeRecord(() => opts.recorder?.ws(msg, c.id));
   };
   const broadcast = (msg: ServerMsg) => {
     const s = JSON.stringify(msg);
-    for (const c of clients.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(s);
+    safeRecord(() => opts.recorder?.ws(msg)); // raz, nie per klient
+    for (const c of clients.values()) if (isOpen(c)) c.ws.send(s);
   };
-  const snapshot = (c: Client) => send(c, { t: "snapshot", seq: store.seq, ts: Date.now(), state: store.state });
+  /** Wiadomości z `seq` (fast/slow/config/status) — numerowane per klient. */
+  type SeqMsg = Extract<ServerMsg, { seq: number }>;
+  const broadcastSeq = (make: (seq: number) => SeqMsg) => {
+    for (const c of clients.values()) if (isOpen(c)) send(c, make(c.stream.nextSeq()));
+  };
+  const snapshot = (c: Client) => {
+    if (telDirty) applyTel();
+    send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
+  };
 
-  const capabilities = { input: true, media: modules.some((m) => m.capability === "media"), map: false, record: false };
+  const capabilities = { input: opts.inputEnabled !== false, media: modules.some((m) => m.capability === "media"), map: false, record: !!opts.recorder };
 
   // ─── źródło telemetrii ───
   opts.source.onMessage((m: SourceMsg) => {
+    safeRecord(() => opts.recorder?.ipc(m));
+    if (ipcMismatch && (m.t === "tel" || m.t === "cfg" || m.t === "evt")) return;
     switch (m.t) {
       case "connected":
         log("info", `source ${opts.source.kind} connected`);
         break;
       case "disconnected":
+        ipcMismatch = false;
         store.setStatus({ connected: false, inputActive: false });
+        router.onSourceDisconnected();
+        router.setInputs(null);
         log("warn", `source disconnected${m.reason ? `: ${m.reason}` : ""}`);
         break;
       case "hello":
+        if (m.ipc !== IPC_VERSION) {
+          ipcMismatch = true;
+          router.setInputs(null);
+          store.setStatus({ connected: false, inputActive: false });
+          log("error", `plugin speaks IPC v${m.ipc}, bridge expects v${IPC_VERSION}: refusing (update plugin/bridge)`);
+          break;
+        }
+        ipcMismatch = false;
+        router.setInputs(m.inputs);
         store.setStatus({
           connected: true,
           game: m.game.id === "eut2" ? "ets2" : "ats",
@@ -138,11 +215,14 @@ export async function startBridge(opts: BridgeOptions) {
         raw.merge(m.ch);
         frame = m.frame;
         telDirty = true;
+        telAt = performance.now();
         if (m.paused !== store.state.status.paused) {
           broadcast({ t: "event", ts: Date.now(), event: { kind: m.paused ? "game.paused" : "game.resumed" } });
           store.setStatus({ paused: m.paused });
         }
-        break;
+        flushImmediate();
+        flushFast();
+        return;
       case "cfg":
         applyConfig(store, m);
         if (m.id === "job" && m.attrs && store.state.config.job) {
@@ -169,90 +249,90 @@ export async function startBridge(opts: BridgeOptions) {
 
   function flushImmediate() {
     const cfg = store.takeConfig();
-    if (cfg) broadcast({ t: "config", seq: store.nextSeq(), ts: Date.now(), d: cfg });
+    if (cfg) broadcastSeq((seq) => ({ t: "config", seq, ts: Date.now(), d: cfg }));
     if (store.statusDirty) {
       store.statusDirty = false;
-      broadcast({ t: "status", seq: store.nextSeq(), ts: Date.now(), status: store.state.status });
+      const status = store.state.status;
+      broadcastSeq((seq) => ({ t: "status", seq, ts: Date.now(), status }));
+    }
+  }
+
+  function applyTel() {
+    applyTelemetry(store, raw);
+    telDirty = false;
+    router.notifyState();
+  }
+
+  /** Wyślij `fast` każdemu klientowi, który jest „na czasie” i ma coś istotnego do dostania. */
+  function flushFast() {
+    if (telDirty) applyTel();
+    if (!store.state.status.connected || !clients.size) return;
+    const now = Date.now();
+    const fast = store.state.fast;
+    for (const c of clients.values()) {
+      if (!isOpen(c) || !c.stream.fastDue(now)) continue;
+      // backpressure: pomiń `fast` (stan „wysłany” się nie zmienia → następna delta będzie pełna)
+      if (c.ws.bufferedAmount > BACKPRESSURE_BYTES) continue;
+      const d = c.stream.takeFast(fast, now);
+      if (!d) continue;
+      send(c, { t: "fast", seq: c.stream.nextSeq(), ts: now, frame, d });
+      if (telAt) telLatency.add(performance.now() - telAt);
     }
   }
 
   // ─── zegary kanałów ───
-  const tickMs = 1000 / 60;
-  const fastTimer = setInterval(() => {
-    if (telDirty) {
-      applyTelemetry(store, raw);
-      telDirty = false;
-    }
-    if (!store.state.status.connected || !store.dirtyFast.size) return;
-    const now = Date.now();
-    const due = [...clients.values()].filter((c) => now >= c.nextFastAt);
-    if (!due.length) return;
-    const d = store.takeFast();
-    if (!d) return;
-    const seq = store.nextSeq();
-    for (const c of due) {
-      c.nextFastAt = Math.max(now - 1000 / c.fastHz, c.nextFastAt + 1000 / c.fastHz);
-      if (c.ws.bufferedAmount > BACKPRESSURE_BYTES) continue;
-      const delta = { ...d };
-      if (!c.placement || now - c.lastPlacementAt < 1000 / PLACEMENT_MAX_HZ) delete delta.placement;
-      else if (delta.placement) c.lastPlacementAt = now;
-      if (Object.keys(delta).length) send(c, { t: "fast", seq, ts: now, frame, d: delta });
-    }
-  }, tickMs);
+  // `fast` wychodzi głównie od razu po ramce `tel` (flushFast w obsłudze źródła); zegar 60 Hz to
+  // dogrywka dla klientów, którzy nie byli „na czasie”, gdy przyszła ostatnia ramka.
+  const fastTimer = setInterval(flushFast, 1000 / 60);
   const slowTimer = setInterval(() => {
+    if (telDirty) applyTel();
     if (!store.state.status.connected) return;
-    const d = store.takeSlow();
-    if (d) broadcast({ t: "slow", seq: store.nextSeq(), ts: Date.now(), d });
+    const now = Date.now();
+    for (const c of clients.values()) {
+      if (!isOpen(c)) continue;
+      const d = c.stream.takeSlow(store.state.slow);
+      if (d) send(c, { t: "slow", seq: c.stream.nextSeq(), ts: now, d });
+    }
   }, 1000 / slowHz);
+  // reguły pochodne: komputer pokładowy + alerty
+  const rulesTimer = setInterval(() => {
+    if (telDirty) applyTel();
+    const now = Date.now();
+    store.setSlow("trip", trip.update(store.state, now));
+    const delta = alertEngine.update(store.state, now);
+    if (delta) {
+      store.setAlerts(alertEngine.alerts);
+      broadcast({ t: "alerts", ts: now, raised: delta.raised, cleared: delta.cleared });
+    }
+  }, opts.rulesEveryMs ?? 250);
   const keyframeTimer = setInterval(() => clients.forEach(snapshot), KEYFRAME_INTERVAL_MS);
+  const metricsTimer = setInterval(() => {
+    if (!telLatency.count) return;
+    const s = telLatency.summary();
+    log("debug", `latency tel→ws.send ms: n=${s.n} p50=${s.p50.toFixed(2)} p95=${s.p95.toFixed(2)} p99=${s.p99.toFixed(2)} max=${s.max.toFixed(2)}`);
+    telLatency.reset();
+  }, 10_000);
 
   // ─── HTTP ───
   const staticDir = opts.staticDir && existsSync(opts.staticDir) ? resolve(opts.staticDir) : null;
-  const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403).end();
-      return;
-    }
-    const url = new URL(req.url ?? "/", "http://x");
-    if (url.pathname === "/api/info") {
-      const info: InfoRes = {
-        name: "yoga-auto-bridge",
-        version: opts.version ?? "0.1.0",
-        protocol: { major: PROTOCOL_VERSION, minor: PROTOCOL_MINOR },
-        paired: !opts.auth,
-      };
-      res
-        .writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" })
-        .end(JSON.stringify(info));
-      return;
-    }
-    for (const [prefix, handler] of statics) {
-      if (url.pathname.startsWith(prefix)) {
-        const r = await handler(url.pathname.slice(prefix.length));
-        if (!r) res.writeHead(404).end();
-        else res.writeHead(200, { "content-type": r.mime, "cache-control": `max-age=${r.maxAgeS ?? 0}` }).end(r.data);
-        return;
-      }
-    }
-    if (!staticDir) {
-      res
-        .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-        .end("yoga-auto bridge działa. Zbuduj PWA: npm run build:app");
-      return;
-    }
-    let file = normalize(join(staticDir, decodeURIComponent(url.pathname)));
-    if (!file.startsWith(staticDir)) {
-      res.writeHead(400).end();
-      return;
-    }
-    if (!existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, "index.html");
-    const isAsset = url.pathname.startsWith("/assets/");
-    res
-      .writeHead(200, {
-        "content-type": MIME[extname(file)] ?? "application/octet-stream",
-        "cache-control": isAsset ? "max-age=31536000, immutable" : "no-cache",
-      })
-      .end(readFileSync(file));
+  const httpDeps = {
+    auth: opts.auth,
+    devices,
+    pairing,
+    statics,
+    staticDir,
+    tilesDir: opts.tilesDir ?? null,
+    version: opts.version ?? "0.1.0",
+    policy,
+    log,
+  };
+  const handler = createHttpHandler(httpDeps);
+  const http = createServer((req, res) => {
+    handler(req, res).catch((e) => {
+      log("error", `http ${req.url}: ${String(e)}`);
+      if (!res.headersSent) res.writeHead(500).end();
+      else res.destroy();
+    });
   });
 
   // ─── WebSocket ───
@@ -260,37 +340,55 @@ export async function startBridge(opts: BridgeOptions) {
     noServer: true,
     handleProtocols: (protocols) => (protocols.has(WS_SUBPROTOCOL) ? WS_SUBPROTOCOL : false),
   });
+  const reject = (socket: import("node:stream").Duplex, code: number, why: string) => {
+    socket.write(`HTTP/1.1 ${code} ${why}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    socket.destroy();
+  };
   http.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://x");
-    if (url.pathname !== "/ws" || !isPrivateAddress(req.socket.remoteAddress)) {
-      socket.destroy();
-      return;
-    }
+    const ip = req.socket.remoteAddress;
+    if (url.pathname !== "/ws") return reject(socket, 404, "Not Found");
+    if (!isPrivateAddress(ip)) return reject(socket, 403, "Forbidden");
+    if (!hostAllowed(req.headers.host, policy)) return reject(socket, 421, "Misdirected Request");
+    if (!originAllowed(req.headers.origin, req.headers.host, policy)) return reject(socket, 403, "Forbidden Origin");
     wss.handleUpgrade(req, socket, head, (ws) => {
       const protos = String(req.headers["sec-websocket-protocol"] ?? "")
         .split(",")
-        .map((s) => s.trim());
+        .map((p) => p.trim());
       if (!protos.includes(WS_SUBPROTOCOL)) {
         ws.close(WsCloseCode.ProtocolMismatch, "protocol mismatch");
         return;
       }
       const token = protos.find((p) => p.startsWith("token."))?.slice(6);
-      if (opts.auth && (!token || !opts.tokens?.has(token))) {
+      const dev = authorize(httpDeps, token, ip);
+      if (!dev) {
+        log("warn", `ws: odrzucono ${ip} (brak/zły token)`);
         ws.close(WsCloseCode.Unauthorized, "unauthorized");
         return;
       }
-      onClient(ws);
+      onClient(ws, dev === "open" ? null : dev.id);
     });
   });
 
-  function onClient(ws: WebSocket) {
+  // odwołanie urządzenia z CLI (osobny proces) → rozłącz je w działającym bridge'u
+  const devicesTimer = devices
+    ? setInterval(() => {
+        for (const id of devices.reloadIfChanged())
+          for (const c of clients.values())
+            if (c.deviceId === id) {
+              log("info", `urządzenie ${id} odwołane, rozłączam klienta ${c.id}`);
+              c.ws.close(WsCloseCode.Unauthorized, "revoked");
+            }
+      }, opts.devicePollMs ?? 2000)
+    : null;
+  devicesTimer?.unref();
+
+  function onClient(ws: WebSocket, deviceId: string | null) {
     const c: Client = {
       id: randomUUID().slice(0, 8),
+      deviceId,
       ws,
-      fastHz: fastHzDefault,
-      placement: false,
-      nextFastAt: 0,
-      lastPlacementAt: 0,
+      stream: new ClientStream(store.state, { fastHz: fastHzDefault }),
     };
     clients.set(c.id, c);
     log("info", `client ${c.id} connected (${clients.size})`);
@@ -300,18 +398,22 @@ export async function startBridge(opts: BridgeOptions) {
       server: { name: "yoga-auto-bridge", version: opts.version ?? "0.1.0", hostname: hostname() },
       session,
       capabilities,
-      rates: { fastHz: c.fastHz, slowHz },
+      rates: { fastHz: c.stream.fastHz, slowHz },
     });
-    if (telDirty) applyTelemetry(store, raw);
     snapshot(c);
     connectHandlers.forEach((h) => h(c.id));
-    ws.on("message", async (data) => {
-      let msg: ClientMsg;
+    ws.on("message", (data) => {
+      let parsed: unknown;
       try {
-        msg = JSON.parse(String(data)) as ClientMsg;
+        parsed = JSON.parse(String(data));
       } catch {
         return;
       }
+      // `null`, tablice, liczby, obiekty bez `t` — ignoruj (nie ubijaj procesu)
+      if (!isClientFrame(parsed)) return;
+      handleClientMsg(parsed as ClientMsg).catch((e) => log("error", `client ${c.id} msg ${parsed.t}: ${String(e)}`));
+    });
+    const handleClientMsg = async (msg: ClientMsg) => {
       switch (msg.t) {
         case "ping":
           send(c, { t: "pong", t0: msg.t0, ts: Date.now() });
@@ -320,20 +422,50 @@ export async function startBridge(opts: BridgeOptions) {
           snapshot(c);
           break;
         case "subscribe":
-          if (msg.fastHz) c.fastHz = msg.fastHz;
-          if (msg.placement !== undefined) c.placement = msg.placement;
+          if (msg.fastHz === 15 || msg.fastHz === 30 || msg.fastHz === 60) c.stream.fastHz = msg.fastHz;
+          if (typeof msg.placement === "boolean") c.stream.placement = msg.placement;
           break;
         case "cmd":
-          send(c, await router.handle(msg, c.id));
+        case "media":
+        case "trip.reset": {
+          const verdict = rate.hit(c.id);
+          if (verdict === "flood") {
+            log("warn", `client ${c.id} flooding commands, closing`);
+            ws.close(WsCloseCode.RateLimited, "rate limited");
+            return;
+          }
+          if (verdict === "limited") {
+            if (msg.t !== "trip.reset") send(c, { t: "ack", id: msg.id, ok: false, error: "rate_limited", tookMs: 0 });
+            return;
+          }
+          if (msg.t === "cmd" && opts.inputEnabled === false)
+            send(c, { t: "ack", id: msg.id, ok: false, error: "input_disabled", tookMs: 0 });
+          else if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
+          else if (msg.t === "trip.reset") {
+            trip.reset();
+            store.setSlow("trip", trip.state);
+            send(c, { t: "ack", id: msg.id, ok: true, tookMs: 0 });
+          }
           break;
+        }
         default:
           break;
       }
-      msgHandlers.get(msg.t)?.forEach((h) => h(msg, c.id));
-    });
+      for (const h of msgHandlers.get(msg.t) ?? []) {
+        try {
+          await h(msg, c.id);
+        } catch (e) {
+          log("error", `module handler ${msg.t}: ${String(e)}`);
+        }
+      }
+    };
     ws.on("close", () => {
       clients.delete(c.id);
+      rate.forget(c.id);
+      const hadHolds = router.holdCount(c.id) > 0;
       router.releaseClient(c.id);
+      // ostatni klient z trzymanym wejściem odszedł: pas bezpieczeństwa po stronie pluginu
+      if (!clients.size && hadHolds) opts.source.send({ t: "releaseAll" });
       log("info", `client ${c.id} disconnected (${clients.size})`);
     });
   }
@@ -375,13 +507,24 @@ export async function startBridge(opts: BridgeOptions) {
   return {
     port,
     store,
+    router,
+    pairing,
+    /** latencja ramka `tel` → `ws.send` (ms) */
+    latency: telLatency,
     async close() {
       clearInterval(fastTimer);
       clearInterval(slowTimer);
       clearInterval(keyframeTimer);
+      clearInterval(rulesTimer);
+      trip.flush();
+      safeRecord(() => opts.recorder?.flush());
+      clearInterval(metricsTimer);
+      if (devicesTimer) clearInterval(devicesTimer);
+      devices?.close();
       for (const c of clients.values()) c.ws.close(WsCloseCode.ServerShutdown, "shutdown");
       await Promise.all(modules.map((m) => m.stop().catch(() => {})));
       await opts.source.stop();
+      await opts.recorder?.close().catch((e) => log("error", `recorder close: ${String(e)}`));
       wss.close();
       await new Promise<void>((r) => http.close(() => r()));
     },

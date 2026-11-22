@@ -14,7 +14,7 @@ import { client, getToken, setToken } from "../../core/client.ts";
 import { tripReset, usePending } from "../../core/commands.ts";
 import { resetSettings, updateSettings, useSettings, type FastHz } from "../../core/settings.ts";
 import { useConnection, useStatus } from "../../core/store.ts";
-import { saveLayout } from "../homeLayout.ts";
+import { resetLayout } from "../homeLayout.ts";
 
 declare const __APP_VERSION__: string;
 
@@ -87,13 +87,14 @@ export function SettingsScreen() {
       </GlassPanel>
 
       <GlassPanel title="Wygląd">
-        <Row label="Motyw">
+        <Row label="Motyw" hint="Auto: ciemny i nocny od 20:00 do 6:00 czasu gry, w dzień jasny">
           <GlassSegmented
             value={s.theme}
             onChange={(v) => updateSettings({ theme: v })}
             options={[
-              { value: "dark", label: "Ciemny" },
               { value: "light", label: "Jasny" },
+              { value: "dark", label: "Ciemny" },
+              { value: "auto", label: "Auto (gra)" },
             ]}
           />
         </Row>
@@ -142,7 +143,7 @@ export function SettingsScreen() {
           />
         </Row>
         <Row label="Układ ekranu głównego" hint="Przywraca domyślne kafle">
-          <GlassButton size="md" label="Przywróć domyślny" onPress={() => saveLayout(null)} />
+          <GlassButton size="md" label="Przywróć domyślny" onPress={() => resetLayout()} />
         </Row>
       </GlassPanel>
 

@@ -21,6 +21,7 @@ import {
   WsCloseCode,
   type ClientMsg,
   type ServerMsg,
+  type SlowState,
   type SourceMsg,
   type TelemetrySource,
 } from "@yoga-auto/protocol";
@@ -39,6 +40,7 @@ import { LatencyStats } from "./metrics.ts";
 import { StateStore } from "./store.ts";
 import { ClientStream } from "./throttle.ts";
 import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
+import { JobHistory, MemoryJobStorage, type JobStorage } from "./jobs.ts";
 
 /**
  * Hook nagrywania sesji (implementacja: `YarecRecorder` z tools/recorder, S7). Strukturalny, żeby
@@ -70,6 +72,10 @@ export interface BridgeOptions {
   devicePollMs?: number;
   /** gdzie trzymać komputer pokładowy (domyślnie pamięć; CLI podaje FileTripStorage) */
   tripStorage?: TripStorage;
+  /** drugi licznik (trip B, M4) */
+  tripBStorage?: TripStorage;
+  /** historia zleceń (M4; domyślnie pamięć) */
+  jobStorage?: JobStorage;
   /** nadpisanie progów alertów (testy) */
   alertThresholds?: Partial<AlertThresholds>;
   /** okres przeliczania alertów/tripu, ms (domyślnie 250) */
@@ -143,6 +149,11 @@ export async function startBridge(opts: BridgeOptions) {
   const trip = new TripComputer(opts.tripStorage ?? new MemoryTripStorage());
   const alertEngine = new AlertEngine(opts.alertThresholds);
   store.setSlow("trip", trip.state);
+  // M4 (addytywnie, bez zmiany kontraktu): `slow.tripB` — drugi licznik, kasowany osobno (`trip.reset` z `which: "B"`)
+  const tripB = new TripComputer(opts.tripBStorage ?? new MemoryTripStorage());
+  const setTripB = () => store.setSlow("tripB" as keyof SlowState, tripB.state as never);
+  setTripB();
+  const jobs = new JobHistory(opts.jobStorage ?? new MemoryJobStorage());
 
   /** błąd rekordera (dysk pełny itp.) nie może zatrzymać bridge'a */
   const safeRecord = (fn: () => void) => {
@@ -225,13 +236,17 @@ export async function startBridge(opts: BridgeOptions) {
         return;
       case "cfg":
         applyConfig(store, m);
+        if (m.id === "job") jobs.onJob(store.state.config.job);
         if (m.id === "job" && m.attrs && store.state.config.job) {
           broadcast({ t: "event", ts: Date.now(), event: { kind: "job.started", job: store.state.config.job } });
         }
         break;
       case "evt": {
         const ev = mapGameplayEvent(m);
-        if (ev) broadcast({ t: "event", ts: Date.now(), event: ev });
+        if (ev) {
+          jobs.onEvent(ev);
+          broadcast({ t: "event", ts: Date.now(), event: ev });
+        }
         break;
       }
       case "input.active":
@@ -299,6 +314,8 @@ export async function startBridge(opts: BridgeOptions) {
     if (telDirty) applyTel();
     const now = Date.now();
     store.setSlow("trip", trip.update(store.state, now));
+    tripB.update(store.state, now);
+    setTripB();
     const delta = alertEngine.update(store.state, now);
     if (delta) {
       store.setAlerts(alertEngine.alerts);
@@ -323,6 +340,7 @@ export async function startBridge(opts: BridgeOptions) {
     staticDir,
     tilesDir: opts.tilesDir ?? null,
     version: opts.version ?? "0.1.0",
+    jobs: (limit: number) => jobs.list(limit),
     policy,
     log,
   };
@@ -442,8 +460,19 @@ export async function startBridge(opts: BridgeOptions) {
             send(c, { t: "ack", id: msg.id, ok: false, error: "input_disabled", tookMs: 0 });
           else if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
           else if (msg.t === "trip.reset") {
-            trip.reset();
-            store.setSlow("trip", trip.state);
+            // `which` to rozszerzenie M4 (brak = "A", zgodnie ze starym kontraktem)
+            if ((msg as { which?: unknown }).which === "B") {
+              tripB.reset();
+              setTripB();
+            } else {
+              trip.reset();
+              store.setSlow("trip", trip.state);
+  // M4 (addytywnie, bez zmiany kontraktu): `slow.tripB` — drugi licznik, kasowany osobno (`trip.reset` z `which: "B"`)
+  const tripB = new TripComputer(opts.tripBStorage ?? new MemoryTripStorage());
+  const setTripB = () => store.setSlow("tripB" as keyof SlowState, tripB.state as never);
+  setTripB();
+  const jobs = new JobHistory(opts.jobStorage ?? new MemoryJobStorage());
+            }
             send(c, { t: "ack", id: msg.id, ok: true, tookMs: 0 });
           }
           break;
@@ -520,6 +549,7 @@ export async function startBridge(opts: BridgeOptions) {
       clearInterval(keyframeTimer);
       clearInterval(rulesTimer);
       trip.flush();
+      tripB.flush();
       safeRecord(() => opts.recorder?.flush());
       clearInterval(metricsTimer);
       if (devicesTimer) clearInterval(devicesTimer);

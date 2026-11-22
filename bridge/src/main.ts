@@ -21,6 +21,8 @@ import { dataDir } from "./paths.ts";
 import { createMediaModule } from "./modules/media.ts";
 import { loadRecorder, loadReplaySource } from "./optional.ts";
 import { startBridge } from "./server.ts";
+import { FileTripStorage } from "./trip.ts";
+import { FileJobStorage } from "./jobs.ts";
 import { PipeSource } from "./sources/pipe.ts";
 
 // ostatnia deska ratunku: nieobsłużone odrzucenie obietnicy nie może ubić procesu w Node 24
@@ -96,6 +98,9 @@ const bridge = await startBridge({
   inputEnabled: settings.inputEnabled,
   ...(values["no-auth"] ? {} : { devices: new DeviceStore(dir) }),
   staticDir,
+  tripStorage: new FileTripStorage(dir),
+  tripBStorage: new FileTripStorage(dir, "b"),
+  jobStorage: new FileJobStorage(dir),
   modules,
   ...(recorder ? { recorder } : {}),
 });

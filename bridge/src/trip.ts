@@ -53,9 +53,11 @@ export class FileTripStorage implements TripStorage {
   readonly currentFile: string;
   readonly historyFile: string;
 
-  constructor(dir: string) {
-    this.currentFile = join(dir, "trip-current.json");
-    this.historyFile = join(dir, "trips.jsonl");
+  /** `suffix` "b" → trip-current-b.json / trips-b.jsonl (drugi licznik, M4). */
+  constructor(dir: string, suffix = "") {
+    const sfx = suffix ? `-${suffix}` : "";
+    this.currentFile = join(dir, `trip-current${sfx}.json`);
+    this.historyFile = join(dir, `trips${sfx}.jsonl`);
   }
 
   loadCurrent(): TripState | null {

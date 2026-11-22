@@ -55,6 +55,10 @@ export const SLOW_THRESHOLDS: Thresholds = {
   "trip.fuelUsed": 0.05,
   "trip.driveTime": 1,
   "trip.instantConsumption": 0.1,
+  "tripB.distance": 10,
+  "tripB.fuelUsed": 0.05,
+  "tripB.driveTime": 1,
+  "tripB.instantConsumption": 0.1,
 };
 
 /**

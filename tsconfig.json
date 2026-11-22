@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "shared/*/src/**/*",
+    "shared/*/scripts/**/*",
+    "shared/*/test/**/*",
+    "packages/*/src/**/*",
+    "apps/*/src/**/*",
+    "bridge/src/**/*",
+    "bridge/test/**/*",
+    "integrations/*/src/**/*",
+    "tools/*/src/**/*",
+    "scripts/**/*"
+  ]
+}

@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.log
+.vite/
+.DS_Store
+Thumbs.db
+# plugin build
+plugin/build/
+plugin/out/
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
+# SCS SDK (MIT, SCS Software) is vendored in plugin/third_party/
+# recordings / local data
+*.yarec
+!tools/recorder/samples/*.yarec
+tools/map/.cache/
+.env
+.claude/settings.local.json
+scs_sdk_*.zip

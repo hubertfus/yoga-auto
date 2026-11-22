@@ -1,0 +1,1957 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ServerMsg",
+  "definitions": {
+    "ServerMsg": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/HelloMsg"
+        },
+        {
+          "$ref": "#/definitions/SnapshotMsg"
+        },
+        {
+          "$ref": "#/definitions/FastMsg"
+        },
+        {
+          "$ref": "#/definitions/SlowMsg"
+        },
+        {
+          "$ref": "#/definitions/ConfigMsg"
+        },
+        {
+          "$ref": "#/definitions/StatusMsg"
+        },
+        {
+          "$ref": "#/definitions/EventMsg"
+        },
+        {
+          "$ref": "#/definitions/AlertsMsg"
+        },
+        {
+          "$ref": "#/definitions/MediaMsg"
+        },
+        {
+          "$ref": "#/definitions/AckMsg"
+        },
+        {
+          "$ref": "#/definitions/PongMsg"
+        }
+      ]
+    },
+    "HelloMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "hello"
+        },
+        "protocol": {
+          "type": "object",
+          "properties": {
+            "major": {
+              "type": "number"
+            },
+            "minor": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "major",
+            "minor"
+          ]
+        },
+        "server": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "hostname": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version",
+            "hostname"
+          ]
+        },
+        "session": {
+          "type": "string",
+          "description": "id sesji bridge'a; zmiana = bridge zrestartowany → klient czyści stan"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "boolean"
+            },
+            "media": {
+              "type": "boolean"
+            },
+            "map": {
+              "type": "boolean"
+            },
+            "record": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "input",
+            "media",
+            "map",
+            "record"
+          ]
+        },
+        "rates": {
+          "type": "object",
+          "properties": {
+            "fastHz": {
+              "type": "number"
+            },
+            "slowHz": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "fastHz",
+            "slowHz"
+          ]
+        }
+      },
+      "required": [
+        "t",
+        "protocol",
+        "server",
+        "session",
+        "capabilities",
+        "rates"
+      ],
+      "description": "Pierwsza wiadomość po połączeniu."
+    },
+    "SnapshotMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "snapshot"
+        },
+        "seq": {
+          "type": "number",
+          "description": "numer sekwencji ostatniej zastosowanej delty"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "state": {
+          "$ref": "#/definitions/FullState"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "ts",
+        "state"
+      ],
+      "description": "Pełny stan. Po `hello`, po `resync` oraz co KEYFRAME_INTERVAL_MS."
+    },
+    "FullState": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        },
+        "fast": {
+          "$ref": "#/definitions/FastState"
+        },
+        "slow": {
+          "$ref": "#/definitions/SlowState"
+        },
+        "config": {
+          "$ref": "#/definitions/ConfigState"
+        },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Alert"
+          },
+          "description": "aktualnie aktywne alerty"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MediaState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "fast",
+        "slow",
+        "config",
+        "alerts",
+        "media"
+      ],
+      "description": "Pełny stan — wysyłany w `snapshot`."
+    },
+    "GameStatus": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "pipe",
+            "mock",
+            "replay",
+            "rencloud"
+          ],
+          "description": "skąd bridge bierze dane"
+        },
+        "connected": {
+          "type": "boolean",
+          "description": "true = plugin/źródło połączone i gra działa"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "game": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "ets2",
+            "ats",
+            null
+          ]
+        },
+        "gameVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inputActive": {
+          "type": "boolean",
+          "description": "czy input device jest aktywne (gra potwierdziła)"
+        },
+        "inputEnabled": {
+          "type": "boolean",
+          "description": "czy sterowanie jest włączone w konfiguracji bridge/pluginu"
+        }
+      },
+      "required": [
+        "source",
+        "connected",
+        "paused",
+        "game",
+        "gameVersion",
+        "inputActive",
+        "inputEnabled"
+      ],
+      "description": "Status połączenia z grą (bridge → UI)."
+    },
+    "FastState": {
+      "type": "object",
+      "properties": {
+        "speed": {
+          "type": "number",
+          "description": "m/s, ujemne przy cofaniu."
+        },
+        "rpm": {
+          "type": "number",
+          "description": "obr/min."
+        },
+        "gear": {
+          "type": "number",
+          "description": "Bieg wyświetlany: >0 przód, 0 neutral, <0 wsteczny."
+        },
+        "cruise": {
+          "type": "number",
+          "description": "Ustawiona prędkość tempomatu, m/s. 0 = wyłączony."
+        },
+        "throttle": {
+          "type": "number",
+          "description": "0..1"
+        },
+        "brake": {
+          "type": "number",
+          "description": "0..1"
+        },
+        "lights": {
+          "$ref": "#/definitions/LightsState"
+        },
+        "hazard": {
+          "type": "boolean"
+        },
+        "blinker": {
+          "type": "string",
+          "enum": [
+            "off",
+            "left",
+            "right"
+          ],
+          "description": "Dźwignia kierunkowskazu (stan logiczny, nie mruganie żarówki)."
+        },
+        "parkingBrake": {
+          "type": "boolean"
+        },
+        "motorBrake": {
+          "type": "boolean"
+        },
+        "retarder": {
+          "type": "number",
+          "description": "Aktualny stopień retardera, 0 = wył. Maks. w `TruckConfig.retarderSteps`."
+        },
+        "engineOn": {
+          "type": "boolean"
+        },
+        "electricOn": {
+          "type": "boolean"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Placement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Pozycja w świecie (pod mapę, M4). Wysyłana maks. 10 Hz nawet przy fast=60 Hz."
+        }
+      },
+      "required": [
+        "speed",
+        "rpm",
+        "gear",
+        "cruise",
+        "throttle",
+        "brake",
+        "lights",
+        "hazard",
+        "blinker",
+        "parkingBrake",
+        "motorBrake",
+        "retarder",
+        "engineOn",
+        "electricOn",
+        "placement"
+      ],
+      "description": "Kanał szybki — wysyłany 30 Hz (domyślnie) lub 60 Hz."
+    },
+    "LightsState": {
+      "type": "object",
+      "properties": {
+        "parking": {
+          "type": "boolean"
+        },
+        "low": {
+          "type": "boolean"
+        },
+        "high": {
+          "type": "boolean"
+        },
+        "beacon": {
+          "type": "boolean"
+        },
+        "auxFront": {
+          "type": "string",
+          "enum": [
+            "off",
+            "dimmed",
+            "full"
+          ]
+        },
+        "auxRoof": {
+          "type": "string",
+          "enum": [
+            "off",
+            "dimmed",
+            "full"
+          ]
+        },
+        "blinkerLeftOn": {
+          "type": "boolean",
+          "description": "Stan żarówek (mruganie) — do animacji ikon."
+        },
+        "blinkerRightOn": {
+          "type": "boolean"
+        },
+        "brake": {
+          "type": "boolean"
+        },
+        "reverse": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "parking",
+        "low",
+        "high",
+        "beacon",
+        "auxFront",
+        "auxRoof",
+        "blinkerLeftOn",
+        "blinkerRightOn",
+        "brake",
+        "reverse"
+      ]
+    },
+    "Placement": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "heading": {
+          "type": "number",
+          "description": "0..1, jak w SDK (0 = północ, rośnie przeciwnie do ruchu wskazówek)."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "heading"
+      ]
+    },
+    "SlowState": {
+      "type": "object",
+      "properties": {
+        "fuel": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "description": "litry"
+            },
+            "rangeKm": {
+              "type": "number",
+              "description": "km według gry"
+            },
+            "avgConsumption": {
+              "type": "number",
+              "description": "l/km (SDK: średnie spalanie)"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "amount",
+            "rangeKm",
+            "avgConsumption",
+            "warning"
+          ]
+        },
+        "adblue": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "amount",
+            "warning"
+          ]
+        },
+        "air": {
+          "type": "object",
+          "properties": {
+            "pressure": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            },
+            "emergency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pressure",
+            "warning",
+            "emergency"
+          ]
+        },
+        "temps": {
+          "type": "object",
+          "properties": {
+            "oil": {
+              "type": "number"
+            },
+            "water": {
+              "type": "number"
+            },
+            "brake": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "oil",
+            "water",
+            "brake"
+          ]
+        },
+        "oilPressure": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "value",
+            "warning"
+          ]
+        },
+        "waterTempWarning": {
+          "type": "boolean"
+        },
+        "battery": {
+          "type": "object",
+          "properties": {
+            "voltage": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "voltage",
+            "warning"
+          ]
+        },
+        "wear": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "number"
+            },
+            "transmission": {
+              "type": "number"
+            },
+            "cabin": {
+              "type": "number"
+            },
+            "chassis": {
+              "type": "number"
+            },
+            "wheels": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "engine",
+            "transmission",
+            "cabin",
+            "chassis",
+            "wheels"
+          ]
+        },
+        "trailers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrailerState"
+          },
+          "description": "Indeks = indeks przyczepy w SDK (0..9). Pusta tablica = brak przyczep."
+        },
+        "nav": {
+          "type": "object",
+          "properties": {
+            "distance": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "m do celu, null = brak trasy"
+            },
+            "time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "s do celu wg GPS gry, null = brak trasy"
+            },
+            "speedLimit": {
+              "type": "number",
+              "description": "m/s, 0 = brak ograniczenia/nieznane"
+            }
+          },
+          "required": [
+            "distance",
+            "time",
+            "speedLimit"
+          ]
+        },
+        "time": {
+          "type": "object",
+          "properties": {
+            "game": {
+              "type": "number",
+              "description": "minuty od początku świata gry"
+            },
+            "restStopMin": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "minuty do wymaganego odpoczynku (może być ujemne = przekroczone)"
+            },
+            "scale": {
+              "type": "number",
+              "description": "skala czasu (np. 19 = 1 min realna ≈ 19 min gry)"
+            }
+          },
+          "required": [
+            "game",
+            "restStopMin",
+            "scale"
+          ]
+        },
+        "odometer": {
+          "type": "number",
+          "description": "km"
+        },
+        "wipers": {
+          "type": "boolean",
+          "description": "SDK daje tylko wł./wył. (`truck.wipers`), stopnia nie ma."
+        },
+        "diffLock": {
+          "type": "boolean"
+        },
+        "liftAxle": {
+          "type": "boolean"
+        },
+        "trailerLiftAxle": {
+          "type": "boolean"
+        },
+        "trip": {
+          "$ref": "#/definitions/TripState",
+          "description": "Dane wyliczane przez bridge (komputer pokładowy)."
+        }
+      },
+      "required": [
+        "fuel",
+        "adblue",
+        "air",
+        "temps",
+        "oilPressure",
+        "waterTempWarning",
+        "battery",
+        "wear",
+        "trailers",
+        "nav",
+        "time",
+        "odometer",
+        "wipers",
+        "diffLock",
+        "liftAxle",
+        "trailerLiftAxle",
+        "trip"
+      ],
+      "description": "Kanał wolny — wysyłany 2 Hz."
+    },
+    "TrailerState": {
+      "type": "object",
+      "properties": {
+        "connected": {
+          "type": "boolean"
+        },
+        "cargoDamage": {
+          "type": "number"
+        },
+        "wear": {
+          "type": "object",
+          "properties": {
+            "chassis": {
+              "type": "number"
+            },
+            "wheels": {
+              "type": "number"
+            },
+            "body": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "chassis",
+            "wheels",
+            "body"
+          ]
+        }
+      },
+      "required": [
+        "connected",
+        "cargoDamage",
+        "wear"
+      ]
+    },
+    "TripState": {
+      "type": "object",
+      "properties": {
+        "distance": {
+          "type": "number",
+          "description": "m od resetu"
+        },
+        "fuelUsed": {
+          "type": "number",
+          "description": "litry od resetu (z korektą tankowań)"
+        },
+        "driveTime": {
+          "type": "number",
+          "description": "s jazdy (prędkość > 0.5 m/s) od resetu"
+        },
+        "instantConsumption": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "l/100 km chwilowe (średnia krocząca 10 s)"
+        },
+        "resetAt": {
+          "type": "number",
+          "description": "czas (ms epoch bridge'a) ostatniego resetu"
+        }
+      },
+      "required": [
+        "distance",
+        "fuelUsed",
+        "driveTime",
+        "instantConsumption",
+        "resetAt"
+      ]
+    },
+    "ConfigState": {
+      "type": "object",
+      "properties": {
+        "truck": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TruckConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/JobConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trailers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrailerConfig"
+          }
+        }
+      },
+      "required": [
+        "truck",
+        "job",
+        "trailers"
+      ],
+      "description": "Konfiguracja (rzadko się zmienia). Przychodzi w `snapshot` oraz wiadomości `config`."
+    },
+    "TruckConfig": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "string"
+        },
+        "brandId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "fuelCapacity": {
+          "type": "number"
+        },
+        "fuelWarningFactor": {
+          "type": "number",
+          "description": "ułamek 0..1 pojemności, poniżej którego gra zapala warning"
+        },
+        "adblueCapacity": {
+          "type": "number"
+        },
+        "airPressureWarning": {
+          "type": "number"
+        },
+        "airPressureEmergency": {
+          "type": "number"
+        },
+        "rpmLimit": {
+          "type": "number"
+        },
+        "forwardGears": {
+          "type": "number"
+        },
+        "reverseGears": {
+          "type": "number"
+        },
+        "retarderSteps": {
+          "type": "number"
+        },
+        "licensePlate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "brand",
+        "brandId",
+        "name",
+        "id",
+        "fuelCapacity",
+        "fuelWarningFactor",
+        "adblueCapacity",
+        "airPressureWarning",
+        "airPressureEmergency",
+        "rpmLimit",
+        "forwardGears",
+        "reverseGears",
+        "retarderSteps",
+        "licensePlate"
+      ]
+    },
+    "JobConfig": {
+      "type": "object",
+      "properties": {
+        "cargo": {
+          "type": "string"
+        },
+        "cargoId": {
+          "type": "string"
+        },
+        "mass": {
+          "type": "number",
+          "description": "kg"
+        },
+        "income": {
+          "type": "number",
+          "description": "waluta gry (EUR dla ETS2)"
+        },
+        "deliveryTime": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "minuta gry, do której trzeba dostarczyć; null = bez terminu (np. special transport)"
+        },
+        "plannedDistanceKm": {
+          "type": "number"
+        },
+        "source": {
+          "$ref": "#/definitions/Place"
+        },
+        "destination": {
+          "$ref": "#/definitions/Place"
+        },
+        "market": {
+          "type": "string",
+          "description": "\"cargo_market\" | \"quick_job\" | \"freight_market\" | \"external_contracts\" | \"external_market\" | …"
+        },
+        "special": {
+          "type": "boolean"
+        },
+        "cargoLoaded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cargo",
+        "cargoId",
+        "mass",
+        "income",
+        "deliveryTime",
+        "plannedDistanceKm",
+        "source",
+        "destination",
+        "market",
+        "special",
+        "cargoLoaded"
+      ]
+    },
+    "Place": {
+      "type": "object",
+      "properties": {
+        "city": {
+          "type": "string"
+        },
+        "cityId": {
+          "type": "string"
+        },
+        "company": {
+          "type": "string"
+        },
+        "companyId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "city",
+        "cityId",
+        "company",
+        "companyId"
+      ]
+    },
+    "TrailerConfig": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "brand": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bodyType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "licensePlate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "index",
+        "id",
+        "name",
+        "brand",
+        "bodyType",
+        "licensePlate"
+      ]
+    },
+    "Alert": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "stabilne id instancji (np. \"speeding\" lub \"damage.hit:1732291200000\")"
+        },
+        "code": {
+          "$ref": "#/definitions/AlertCode"
+        },
+        "level": {
+          "$ref": "#/definitions/AlertLevel"
+        },
+        "since": {
+          "type": "number",
+          "description": "ms epoch bridge'a"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean"
+            ]
+          },
+          "description": "dane do treści, np. { limit: 22.2, speed: 25.1 } albo { part: \"engine\", delta: 0.04 }"
+        },
+        "sticky": {
+          "type": "boolean",
+          "description": "alert jednorazowy (toast) vs trwały (wisi, dopóki warunek trwa)"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "level",
+        "since",
+        "sticky"
+      ]
+    },
+    "AlertCode": {
+      "type": "string",
+      "enum": [
+        "fuel.low",
+        "adblue.low",
+        "air.low",
+        "air.emergency",
+        "oil.pressure",
+        "water.temp",
+        "battery.voltage",
+        "damage.hit",
+        "damage.high",
+        "rest.soon",
+        "rest.now",
+        "rest.overdue",
+        "speeding",
+        "job.late",
+        "game.disconnected"
+      ]
+    },
+    "AlertLevel": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "description": "Alerty wyliczane przez bridge (reguły w docs/ANALYSIS.md §5.3)."
+    },
+    "MediaState": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "np. \"Spotify.exe\", \"msedge.exe\""
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "playing",
+            "paused",
+            "stopped",
+            "unknown"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "album": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ścieżka HTTP na bridge'u, np. \"/media/art/ab12.jpg\" (bridge serwuje okładkę), null = brak"
+        },
+        "position": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "s"
+        },
+        "duration": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "s"
+        },
+        "positionAt": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "ms epoch bridge'a, kiedy zmierzono `position` (UI interpoluje)"
+        },
+        "canPlay": {
+          "type": "boolean"
+        },
+        "canPause": {
+          "type": "boolean"
+        },
+        "canNext": {
+          "type": "boolean"
+        },
+        "canPrev": {
+          "type": "boolean"
+        },
+        "canSeek": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source",
+        "status",
+        "title",
+        "artist",
+        "album",
+        "artUrl",
+        "position",
+        "duration",
+        "positionAt",
+        "canPlay",
+        "canPause",
+        "canNext",
+        "canPrev",
+        "canSeek"
+      ],
+      "description": "Media (SMTC na PC). Dostarczane przez integrations/media → bridge → UI."
+    },
+    "FastMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "fast"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "frame": {
+          "type": "number",
+          "description": "klatka gry (z pluginu), do wykrywania zamrożeń"
+        },
+        "d": {
+          "$ref": "#/definitions/Delta%3CFastState%3E"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "ts",
+        "frame",
+        "d"
+      ],
+      "description": "Delta kanału szybkiego."
+    },
+    "Delta<FastState>": {
+      "type": "object",
+      "properties": {
+        "speed": {
+          "type": "number",
+          "description": "m/s, ujemne przy cofaniu."
+        },
+        "rpm": {
+          "type": "number",
+          "description": "obr/min."
+        },
+        "gear": {
+          "type": "number",
+          "description": "Bieg wyświetlany: >0 przód, 0 neutral, <0 wsteczny."
+        },
+        "cruise": {
+          "type": "number",
+          "description": "Ustawiona prędkość tempomatu, m/s. 0 = wyłączony."
+        },
+        "throttle": {
+          "type": "number",
+          "description": "0..1"
+        },
+        "brake": {
+          "type": "number",
+          "description": "0..1"
+        },
+        "lights": {
+          "$ref": "#/definitions/LightsState"
+        },
+        "hazard": {
+          "type": "boolean"
+        },
+        "blinker": {
+          "type": "string",
+          "enum": [
+            "off",
+            "left",
+            "right"
+          ],
+          "description": "Dźwignia kierunkowskazu (stan logiczny, nie mruganie żarówki)."
+        },
+        "parkingBrake": {
+          "type": "boolean"
+        },
+        "motorBrake": {
+          "type": "boolean"
+        },
+        "retarder": {
+          "type": "number",
+          "description": "Aktualny stopień retardera, 0 = wył. Maks. w `TruckConfig.retarderSteps`."
+        },
+        "engineOn": {
+          "type": "boolean"
+        },
+        "electricOn": {
+          "type": "boolean"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Placement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Pozycja w świecie (pod mapę, M4). Wysyłana maks. 10 Hz nawet przy fast=60 Hz."
+        }
+      },
+      "description": "Delta: każde pole grupy opcjonalne."
+    },
+    "SlowMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "slow"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "d": {
+          "$ref": "#/definitions/Delta%3CSlowState%3E"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "ts",
+        "d"
+      ],
+      "description": "Delta kanału wolnego."
+    },
+    "Delta<SlowState>": {
+      "type": "object",
+      "properties": {
+        "fuel": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "description": "litry"
+            },
+            "rangeKm": {
+              "type": "number",
+              "description": "km według gry"
+            },
+            "avgConsumption": {
+              "type": "number",
+              "description": "l/km (SDK: średnie spalanie)"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "amount",
+            "rangeKm",
+            "avgConsumption",
+            "warning"
+          ]
+        },
+        "adblue": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "amount",
+            "warning"
+          ]
+        },
+        "air": {
+          "type": "object",
+          "properties": {
+            "pressure": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            },
+            "emergency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pressure",
+            "warning",
+            "emergency"
+          ]
+        },
+        "temps": {
+          "type": "object",
+          "properties": {
+            "oil": {
+              "type": "number"
+            },
+            "water": {
+              "type": "number"
+            },
+            "brake": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "oil",
+            "water",
+            "brake"
+          ]
+        },
+        "oilPressure": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "value",
+            "warning"
+          ]
+        },
+        "waterTempWarning": {
+          "type": "boolean"
+        },
+        "battery": {
+          "type": "object",
+          "properties": {
+            "voltage": {
+              "type": "number"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "voltage",
+            "warning"
+          ]
+        },
+        "wear": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "number"
+            },
+            "transmission": {
+              "type": "number"
+            },
+            "cabin": {
+              "type": "number"
+            },
+            "chassis": {
+              "type": "number"
+            },
+            "wheels": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "engine",
+            "transmission",
+            "cabin",
+            "chassis",
+            "wheels"
+          ]
+        },
+        "trailers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrailerState"
+          },
+          "description": "Indeks = indeks przyczepy w SDK (0..9). Pusta tablica = brak przyczep."
+        },
+        "nav": {
+          "type": "object",
+          "properties": {
+            "distance": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "m do celu, null = brak trasy"
+            },
+            "time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "s do celu wg GPS gry, null = brak trasy"
+            },
+            "speedLimit": {
+              "type": "number",
+              "description": "m/s, 0 = brak ograniczenia/nieznane"
+            }
+          },
+          "required": [
+            "distance",
+            "time",
+            "speedLimit"
+          ]
+        },
+        "time": {
+          "type": "object",
+          "properties": {
+            "game": {
+              "type": "number",
+              "description": "minuty od początku świata gry"
+            },
+            "restStopMin": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "minuty do wymaganego odpoczynku (może być ujemne = przekroczone)"
+            },
+            "scale": {
+              "type": "number",
+              "description": "skala czasu (np. 19 = 1 min realna ≈ 19 min gry)"
+            }
+          },
+          "required": [
+            "game",
+            "restStopMin",
+            "scale"
+          ]
+        },
+        "odometer": {
+          "type": "number",
+          "description": "km"
+        },
+        "wipers": {
+          "type": "boolean",
+          "description": "SDK daje tylko wł./wył. (`truck.wipers`), stopnia nie ma."
+        },
+        "diffLock": {
+          "type": "boolean"
+        },
+        "liftAxle": {
+          "type": "boolean"
+        },
+        "trailerLiftAxle": {
+          "type": "boolean"
+        },
+        "trip": {
+          "$ref": "#/definitions/TripState",
+          "description": "Dane wyliczane przez bridge (komputer pokładowy)."
+        }
+      },
+      "description": "Delta: każde pole grupy opcjonalne."
+    },
+    "ConfigMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "config"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "d": {
+          "$ref": "#/definitions/Delta%3CConfigState%3E"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "ts",
+        "d"
+      ]
+    },
+    "Delta<ConfigState>": {
+      "type": "object",
+      "properties": {
+        "truck": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TruckConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/JobConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trailers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TrailerConfig"
+          }
+        }
+      },
+      "description": "Delta: każde pole grupy opcjonalne."
+    },
+    "StatusMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "status"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/definitions/GameStatus"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "ts",
+        "status"
+      ]
+    },
+    "EventMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "event"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "event": {
+          "$ref": "#/definitions/GameEvent"
+        }
+      },
+      "required": [
+        "t",
+        "ts",
+        "event"
+      ]
+    },
+    "GameEvent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "job.started"
+            },
+            "job": {
+              "$ref": "#/definitions/JobConfig"
+            }
+          },
+          "required": [
+            "kind",
+            "job"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "job.delivered"
+            },
+            "revenue": {
+              "type": "number"
+            },
+            "earnedXp": {
+              "type": "number"
+            },
+            "cargoDamage": {
+              "type": "number"
+            },
+            "distanceKm": {
+              "type": "number"
+            },
+            "deliveryTime": {
+              "type": "number",
+              "description": "minuty gry"
+            },
+            "autoParked": {
+              "type": "boolean"
+            },
+            "autoLoaded": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "revenue",
+            "earnedXp",
+            "cargoDamage",
+            "distanceKm",
+            "deliveryTime",
+            "autoParked",
+            "autoLoaded"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "job.cancelled"
+            },
+            "penalty": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "penalty"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "player.fined"
+            },
+            "offence": {
+              "type": "string"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "offence",
+            "amount"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "player.tollgate"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "amount"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "player.ferry"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "player.train"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "source",
+            "target",
+            "amount"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "player.refuel"
+            },
+            "amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "amount"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "trailer.attached"
+            },
+            "index": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "index"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "trailer.detached"
+            },
+            "index": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "index"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "game.paused"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "game.resumed"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
+      ],
+      "description": "Zdarzenia gry (jednorazowe). Źródło: gameplay events SDK + zdarzenia wyliczane przez bridge."
+    },
+    "AlertsMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "alerts"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "raised": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Alert"
+          }
+        },
+        "cleared": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "t",
+        "ts",
+        "raised",
+        "cleared"
+      ],
+      "description": "Zmiana zbioru aktywnych alertów: `raised` nowe / zaktualizowane, `cleared` id do usunięcia."
+    },
+    "MediaMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "media"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MediaState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "t",
+        "ts",
+        "media"
+      ]
+    },
+    "AckMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "ack"
+        },
+        "id": {
+          "type": "string",
+          "description": "id z komendy klienta"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/definitions/AckError"
+        },
+        "state": {
+          "type": "string",
+          "description": "dla kind:\"set\" — stan osiągnięty"
+        },
+        "tookMs": {
+          "type": "number",
+          "description": "ms od odebrania komendy do potwierdzenia"
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "ok",
+        "tookMs"
+      ],
+      "description": "Odpowiedź na `cmd` / `media`."
+    },
+    "AckError": {
+      "type": "string",
+      "enum": [
+        "unknown_action",
+        "input_disabled",
+        "game_not_connected",
+        "game_paused",
+        "invalid_value",
+        "timeout",
+        "rate_limited",
+        "not_supported"
+      ]
+    },
+    "PongMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "pong"
+        },
+        "t0": {
+          "type": "number",
+          "description": "echo z ping"
+        },
+        "ts": {
+          "type": "number",
+          "description": "czas bridge'a"
+        }
+      },
+      "required": [
+        "t",
+        "t0",
+        "ts"
+      ]
+    }
+  }
+}

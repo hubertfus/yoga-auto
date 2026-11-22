@@ -1,0 +1,14 @@
+{
+  "t": "event",
+  "ts": 1763827260000,
+  "event": {
+    "kind": "job.delivered",
+    "revenue": 18450,
+    "earnedXp": 742,
+    "cargoDamage": 0.012,
+    "distanceKm": 812,
+    "deliveryTime": 731,
+    "autoParked": false,
+    "autoLoaded": false
+  }
+}

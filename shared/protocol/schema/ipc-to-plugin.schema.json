@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/IpcToPlugin",
+  "definitions": {
+    "IpcToPlugin": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IpcInput"
+        },
+        {
+          "$ref": "#/definitions/IpcHeartbeat"
+        },
+        {
+          "$ref": "#/definitions/IpcReleaseAll"
+        },
+        {
+          "$ref": "#/definitions/IpcSetOptions"
+        }
+      ]
+    },
+    "IpcInput": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "in"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "device": {
+          "type": "string",
+          "enum": [
+            "semantical",
+            "generic"
+          ]
+        },
+        "input": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "press",
+            "down",
+            "up",
+            "axis"
+          ]
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "device",
+        "input",
+        "op"
+      ],
+      "description": "Wejście.\n- press: plugin podaje true przez PRESS_FRAMES klatek, potem false.\n- down/up: trzymanie; plugin zwalnia sam, jeśli przez HOLD_WATCHDOG_MS nie przyjdzie `hb`.\n- axis: wartość float (zarezerwowane, MVP nie używa)."
+    },
+    "IpcHeartbeat": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "hb"
+        }
+      },
+      "required": [
+        "t"
+      ],
+      "description": "Heartbeat co 250 ms. Brak przez HOLD_WATCHDOG_MS → plugin zwalnia wszystkie wejścia."
+    },
+    "IpcReleaseAll": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "releaseAll"
+        }
+      },
+      "required": [
+        "t"
+      ]
+    },
+    "IpcSetOptions": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "opts"
+        },
+        "inputEnabled": {
+          "type": "boolean"
+        },
+        "telMinIntervalMs": {
+          "type": "number",
+          "description": "0 = każda klatka; >0 = min. odstęp między ramkami `tel` w ms (np. 8)"
+        }
+      },
+      "required": [
+        "t"
+      ]
+    }
+  }
+}

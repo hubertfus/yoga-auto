@@ -1,0 +1,14 @@
+{
+  "t": "tel",
+  "frame": 88123,
+  "simTime": 1843000000,
+  "renderTime": 1843016000,
+  "paused": false,
+  "ch": {
+    "truck.speed": 23.61,
+    "truck.engine.rpm": 1180,
+    "truck.light.beam.low": true,
+    "trailer.0.wear.chassis": 0.031,
+    "truck.world.placement": { "x": -9123.4, "y": 52.1, "z": 14022.8, "heading": 0.25, "pitch": 0.0, "roll": 0.0 }
+  }
+}

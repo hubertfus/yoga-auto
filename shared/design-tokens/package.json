@@ -1,0 +1,15 @@
+{
+  "name": "@yoga-auto/design-tokens",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tokeny Liquid Glass (docs/DESIGN.md §3). Źródło: tokens.json. Właściciel po F0: S3.",
+  "exports": {
+    ".": "./generated/tokens.ts",
+    "./tokens.css": "./generated/tokens.css",
+    "./tokens.json": "./tokens.json"
+  },
+  "scripts": {
+    "gen": "node scripts/gen.ts"
+  }
+}

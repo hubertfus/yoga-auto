@@ -1,0 +1,36 @@
+{
+  "name": "yoga-auto",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "shared/*",
+    "packages/*",
+    "apps/*",
+    "bridge",
+    "integrations/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "gen": "npm run gen -w @yoga-auto/protocol && npm run gen -w @yoga-auto/design-tokens",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run gen && npm run typecheck && npm run test",
+    "dev:bridge": "node bridge/src/main.ts --source mock --no-auth",
+    "dev:app": "npm run dev -w @yoga-auto/yoga",
+    "dev:mock": "node scripts/dev-mock.ts",
+    "build:app": "npm run build -w @yoga-auto/yoga",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "ajv": "^8.20.0",
+    "prettier": "^3.10.1",
+    "ts-json-schema-generator": "^2.10.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@yoga-auto/yoga",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA na Yogę. core+shell: S4, features: S5 (media: S6, map: S8).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@yoga-auto/protocol": "*",
+    "@yoga-auto/glass-ui": "*",
+    "@yoga-auto/design-tokens": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "vite": "^7.0.0"
+  }
+}

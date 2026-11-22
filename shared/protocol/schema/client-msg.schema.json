@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ClientMsg",
+  "definitions": {
+    "ClientMsg": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CmdMsg"
+        },
+        {
+          "$ref": "#/definitions/MediaCmdMsg"
+        },
+        {
+          "$ref": "#/definitions/SubscribeMsg"
+        },
+        {
+          "$ref": "#/definitions/ResyncMsg"
+        },
+        {
+          "$ref": "#/definitions/PingMsg"
+        },
+        {
+          "$ref": "#/definitions/TripResetMsg"
+        }
+      ]
+    },
+    "CmdMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "cmd"
+        },
+        "id": {
+          "type": "string",
+          "description": "unikalne id klienta (np. nanoid), echo w `ack`"
+        },
+        "action": {
+          "$ref": "#/definitions/ActionId"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "down",
+            "up",
+            "keep"
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "action"
+      ],
+      "description": "Komenda pojazdu.\n- kind \"press\": `op` pominięte.\n- kind \"hold\":  `op: \"down\"` potem `op: \"up\"` (ten sam `action`). Bridge zwalnia sam po HOLD_MAX_MS,                 przy rozłączeniu WS oraz gdy klient przez HOLD_WATCHDOG_MS nie wyśle `hold.keep`.\n- kind \"set\":   `value` z `ACTIONS[action].values`."
+    },
+    "ActionId": {
+      "type": "string",
+      "enum": [
+        "lights.cycle",
+        "lights.mode",
+        "lights.off",
+        "lights.high",
+        "lights.flash",
+        "lights.beacon",
+        "lights.hazard",
+        "blinker.left",
+        "blinker.right",
+        "blinker.leftHold",
+        "blinker.rightHold",
+        "wipers.up",
+        "wipers.down",
+        "wipers.level",
+        "engine.toggle",
+        "electric.toggle",
+        "parkingBrake.toggle",
+        "motorBrake.toggle",
+        "retarder.up",
+        "retarder.down",
+        "retarder.level",
+        "cruise.set",
+        "cruise.inc",
+        "cruise.dec",
+        "cruise.resume",
+        "diffLock.toggle",
+        "liftAxle.toggle",
+        "trailerLiftAxle.toggle",
+        "trailer.toggle",
+        "horn",
+        "airHorn",
+        "camera.cycle",
+        "camera.1",
+        "camera.2",
+        "camera.3",
+        "camera.4",
+        "camera.5",
+        "camera.6",
+        "camera.7",
+        "camera.8",
+        "radio.toggle",
+        "radio.play",
+        "radio.fav",
+        "radio.next",
+        "radio.prev",
+        "radio.volUp",
+        "radio.volDown",
+        "ui.map",
+        "ui.advisorZoomIn",
+        "ui.advisorZoomOut",
+        "ui.advisorEtaMode",
+        "ui.hud",
+        "ui.mirrors",
+        "ui.screenshot",
+        "ui.pause",
+        "ui.quickPark"
+      ]
+    },
+    "MediaCmdMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "media"
+        },
+        "id": {
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/definitions/MediaAction"
+        },
+        "value": {
+          "type": "number",
+          "description": "dla seek: sekundy"
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "action"
+      ]
+    },
+    "MediaAction": {
+      "type": "string",
+      "enum": [
+        "play",
+        "pause",
+        "toggle",
+        "next",
+        "prev",
+        "seek"
+      ]
+    },
+    "SubscribeMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "subscribe"
+        },
+        "fastHz": {
+          "type": "number",
+          "enum": [
+            15,
+            30,
+            60
+          ]
+        },
+        "placement": {
+          "type": "boolean",
+          "description": "czy wysyłać `placement` (mapa)"
+        }
+      },
+      "required": [
+        "t"
+      ],
+      "description": "Ustawienia subskrypcji klienta."
+    },
+    "ResyncMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "resync"
+        }
+      },
+      "required": [
+        "t"
+      ],
+      "description": "Prośba o pełny snapshot (np. po wykryciu dziury w `seq`)."
+    },
+    "PingMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "ping"
+        },
+        "t0": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "t0"
+      ]
+    },
+    "TripResetMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "trip.reset"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "id"
+      ],
+      "description": "Reset komputera pokładowego."
+    }
+  }
+}

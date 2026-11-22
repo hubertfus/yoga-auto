@@ -1,0 +1,9 @@
+{
+  "t": "slow",
+  "seq": 1043,
+  "ts": 1763827200500,
+  "d": {
+    "fuel": { "amount": 412.5, "rangeKm": 1310, "avgConsumption": 0.315, "warning": false },
+    "nav": { "distance": 184200, "time": 7380, "speedLimit": 22.22 }
+  }
+}

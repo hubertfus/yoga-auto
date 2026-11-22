@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl" data-theme="dark" data-tier="high">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>yoga-auto</title>
+  </head>
+  <body>
+    <!-- Filtry SVG Liquid Glass (refrakcja). Muszą być w DOM przed CSS, który je referuje (DESIGN.md §2).
+         S3 dostarcza docelowe definicje (generator map przemieszczeń), S4 je tu wkleja. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <filter id="lg-refract" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="0" />
+        </filter>
+      </defs>
+    </svg>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

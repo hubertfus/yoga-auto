@@ -1,0 +1,9 @@
+plugin/third_party/
+plugin/generated/
+plugin/build/
+shared/protocol/generated/
+shared/protocol/schema/
+shared/design-tokens/generated/
+**/dist/
+*.md
+package-lock.json

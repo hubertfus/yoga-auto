@@ -1,0 +1,61 @@
+/* Globalne zasady dotyku i kiosku (DESIGN.md §7). Właściciel: S4. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+html,
+body {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+body {
+  background: radial-gradient(120% 120% at 20% 10%, oklch(32% 0.06 250), var(--bg-0) 60%);
+  color: var(--text-1);
+  font: var(--t-body);
+}
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.shell__body {
+  flex: 1;
+  display: flex;
+  gap: var(--s-4);
+  padding: 0 var(--s-4) var(--s-4);
+  min-height: 0;
+}
+.shell__content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(180px, 1fr);
+  gap: var(--s-4);
+  height: 100%;
+}
+.empty {
+  grid-column: span 4;
+  color: var(--text-3);
+}

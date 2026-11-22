@@ -1,0 +1,8 @@
+{
+  "t": "hello",
+  "protocol": { "major": 1, "minor": 0 },
+  "server": { "name": "yoga-auto-bridge", "version": "0.1.0", "hostname": "GAMING-PC" },
+  "session": "s_8f3k2",
+  "capabilities": { "input": true, "media": true, "map": false, "record": true },
+  "rates": { "fastHz": 30, "slowHz": 2 }
+}

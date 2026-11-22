@@ -1,0 +1,390 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/IpcFromPlugin",
+  "definitions": {
+    "IpcFromPlugin": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IpcHello"
+        },
+        {
+          "$ref": "#/definitions/IpcTelemetry"
+        },
+        {
+          "$ref": "#/definitions/IpcConfig"
+        },
+        {
+          "$ref": "#/definitions/IpcGameplay"
+        },
+        {
+          "$ref": "#/definitions/IpcInputActive"
+        },
+        {
+          "$ref": "#/definitions/IpcInputAck"
+        },
+        {
+          "$ref": "#/definitions/IpcLog"
+        }
+      ]
+    },
+    "IpcHello": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "hello"
+        },
+        "ipc": {
+          "type": "number"
+        },
+        "plugin": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "yoga-auto"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ]
+        },
+        "game": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "eut2",
+                "ats"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "version"
+          ]
+        },
+        "api": {
+          "type": "object",
+          "properties": {
+            "telemetry": {
+              "type": "string"
+            },
+            "input": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "telemetry",
+            "input"
+          ],
+          "description": "wersje API zwrócone przez grę, np. \"1.18\""
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "kanały zarejestrowane z sukcesem"
+        },
+        "inputs": {
+          "type": "object",
+          "properties": {
+            "semantical": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "generic": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "semantical",
+            "generic"
+          ],
+          "description": "wejścia urządzeń"
+        },
+        "inputEnabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "t",
+        "ipc",
+        "plugin",
+        "game",
+        "api",
+        "channels",
+        "inputs",
+        "inputEnabled"
+      ],
+      "description": "IPC plugin (C++) ↔ bridge (Node) przez named pipe `\\\\.\\pipe\\yoga-auto`.\n\nRAMKA: uint32 little-endian długość payloadu (bajty) + payload UTF-8 JSON. Maks. 256 KiB. Plugin = serwer pipe (1 klient naraz). Bridge łączy się z retry co 1 s. Nazwy kanałów i atrybutów = dokładnie nazwy SDK (stringi `SCS_TELEMETRY_*`), bez tłumaczenia. Tłumaczenie na FastState/SlowState robi bridge (bridge/src/mapping.ts)."
+    },
+    "IpcTelemetry": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "tel"
+        },
+        "frame": {
+          "type": "number",
+          "description": "licznik klatek pluginu (frame_end)"
+        },
+        "simTime": {
+          "type": "number",
+          "description": "czas symulacji gry z frame_start, µs"
+        },
+        "renderTime": {
+          "type": "number",
+          "description": "czas renderu gry, µs"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "ch": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/IpcValue"
+          },
+          "description": "Zmienione kanały. Klucz = nazwa kanału, dla kanałów indeksowanych `nazwa[index]`, np. \"truck.speed\", \"truck.wheel.rotation[3]\". Przyczepy w formie SDK: \"trailer.0.wear.chassis\". Wartości: number | boolean | string | {x,y,z} | {x,y,z,heading,pitch,roll} (dplacement)."
+        }
+      },
+      "required": [
+        "t",
+        "frame",
+        "simTime",
+        "renderTime",
+        "paused",
+        "ch"
+      ],
+      "description": "Zmienione kanały od poprzedniej ramki. Max 1 na klatkę gry; wątek IO może zlać kilka klatek w jedną."
+    },
+    "IpcValue": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            },
+            "heading": {
+              "type": "number"
+            },
+            "pitch": {
+              "type": "number"
+            },
+            "roll": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z",
+            "heading",
+            "pitch",
+            "roll"
+          ]
+        }
+      ]
+    },
+    "IpcConfig": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "cfg"
+        },
+        "id": {
+          "type": "string",
+          "description": "\"job\" | \"truck\" | \"trailer\" | \"trailer.0\"..\"trailer.9\" | \"controls\" | \"hshifter\" | \"substances\""
+        },
+        "attrs": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/IpcValue"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/IpcValue"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "attrs"
+      ],
+      "description": "Event konfiguracyjny SDK. `attrs: null` = konfiguracja usunięta (np. brak zlecenia)."
+    },
+    "IpcGameplay": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "evt"
+        },
+        "id": {
+          "type": "string",
+          "description": "\"job.delivered\" | \"job.cancelled\" | \"player.fined\" | \"player.tollgate.paid\" | \"player.use.ferry\" | \"player.use.train\" | \"player.refuel.paid\" | …"
+        },
+        "attrs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/IpcValue"
+          }
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "attrs"
+      ],
+      "description": "Gameplay event SDK."
+    },
+    "IpcInputActive": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "input.active"
+        },
+        "device": {
+          "type": "string",
+          "enum": [
+            "semantical",
+            "generic"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "t",
+        "device",
+        "active"
+      ]
+    },
+    "IpcInputAck": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "in.ack"
+        },
+        "seq": {
+          "type": "number"
+        },
+        "frame": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "false = nieznane wejście / input wyłączony"
+        }
+      },
+      "required": [
+        "t",
+        "seq",
+        "frame",
+        "ok"
+      ],
+      "description": "Potwierdzenie zastosowania wejścia w grze (po wydaniu wartości w on_event)."
+    },
+    "IpcLog": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "log"
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "msg": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "level",
+        "msg"
+      ]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@yoga-auto/glass-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Design system Liquid Glass (docs/DESIGN.md §4). F0 = stuby z finalnymi sygnaturami; pełna implementacja: S3.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@yoga-auto/design-tokens": "*"
+  }
+}

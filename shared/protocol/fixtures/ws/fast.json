@@ -1,0 +1,23 @@
+{
+  "t": "fast",
+  "seq": 1042,
+  "ts": 1763827200123,
+  "frame": 88123,
+  "d": {
+    "speed": 23.61,
+    "rpm": 1180,
+    "gear": 12,
+    "lights": {
+      "parking": true,
+      "low": true,
+      "high": false,
+      "beacon": false,
+      "auxFront": "off",
+      "auxRoof": "off",
+      "blinkerLeftOn": false,
+      "blinkerRightOn": false,
+      "brake": false,
+      "reverse": false
+    }
+  }
+}

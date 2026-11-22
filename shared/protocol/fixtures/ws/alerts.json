@@ -1,0 +1,15 @@
+{
+  "t": "alerts",
+  "ts": 1763827201000,
+  "raised": [
+    {
+      "id": "speeding",
+      "code": "speeding",
+      "level": "warning",
+      "since": 1763827198000,
+      "sticky": true,
+      "data": { "limit": 22.22, "speed": 25.4 }
+    }
+  ],
+  "cleared": []
+}

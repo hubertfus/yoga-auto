@@ -1,0 +1,10 @@
+{
+  "t": "hello",
+  "ipc": 1,
+  "plugin": { "name": "yoga-auto", "version": "0.1.0" },
+  "game": { "id": "eut2", "name": "Euro Truck Simulator 2", "version": "1.62" },
+  "api": { "telemetry": "1.18", "input": "1.00" },
+  "channels": ["truck.speed", "truck.engine.rpm"],
+  "inputs": { "semantical": ["light", "flasher4way"], "generic": [] },
+  "inputEnabled": true
+}

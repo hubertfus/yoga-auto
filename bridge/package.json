@@ -1,0 +1,21 @@
+{
+  "name": "@yoga-auto/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bridge PC: telemetria → WebSocket, komendy → gra. Właściciel: S2.",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "node --watch src/main.ts --source mock --no-auth",
+    "start": "node src/main.ts"
+  },
+  "dependencies": {
+    "@yoga-auto/protocol": "*",
+    "@yoga-auto/mock": "*",
+    "@yoga-auto/media": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}

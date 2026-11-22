@@ -58,3 +58,11 @@
   .ft-gear { animation: none; }
   .ft-rim[data-over="true"]::after { animation: none; }
 }
+
+/* historia zleceń (M4) */
+.ft-job-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.ft-job-row { display: flex; align-items: center; gap: var(--s-5); padding: var(--s-3) 0; border-bottom: 1px solid color-mix(in oklch, var(--text-1) 10%, transparent); }
+.ft-job-row:last-child { border-bottom: 0; }
+.ft-job-row__cell { display: flex; flex-direction: column; min-width: 96px; align-items: flex-end; text-align: right; }
+.ft-job-row .ft-mid[data-tone="crit"] { color: var(--crit); }
+.ft-job-row[data-status="cancelled"] .ft-grow { opacity: 0.7; }

@@ -47,6 +47,8 @@ export interface HttpDeps {
   /** katalog z `*.pmtiles` (M4), serwowany pod `/tiles/` za tokenem */
   tilesDir?: string | null;
   version: string;
+  /** historia zleceń dla `GET /api/jobs` (M4); brak = 404 */
+  jobs?: ((limit: number) => unknown) | undefined;
   policy: OriginPolicy;
   log: (level: "debug" | "info" | "warn" | "error", msg: string) => void;
 }
@@ -216,6 +218,12 @@ export function createHttpHandler(deps: HttpDeps) {
         paired: dev !== null,
       };
       return json(res, 200, info, cors);
+    }
+    if (path === "/api/jobs" && req.method === "GET") {
+      if (!deps.jobs) return json(res, 404, { error: "not_found" }, cors);
+      if (!authorize(deps, tokenFromRequest(req, url), ip)) return json(res, 401, { error: "unauthorized" }, cors);
+      const n = Number(url.searchParams.get("limit"));
+      return json(res, 200, deps.jobs(Number.isInteger(n) && n > 0 ? Math.min(n, 1000) : 200), cors);
     }
     if (path === "/api/pair/start" && req.method === "POST") {
       if (!deps.pairing) return json(res, 404, { error: "pairing_disabled" }, cors);

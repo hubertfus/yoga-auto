@@ -1,7 +1,8 @@
-/** Komputer pokładowy (trip A): dystans, czas jazdy, zużycie, średnia prędkość, reset z potwierdzeniem. */
+/** Komputer pokładowy (trip A i B): dystans, czas jazdy, zużycie, średnia prędkość, reset z potwierdzeniem. */
 import { useEffect, useRef, useState } from "react";
-import { GlassButton, GlassPanel, Icon } from "@yoga-auto/glass-ui";
-import type { TripState } from "@yoga-auto/protocol";
+import { GlassButton, GlassPanel, GlassSegmented, Icon, type SegmentOption } from "@yoga-auto/glass-ui";
+import type { ClientMsg, TripState } from "@yoga-auto/protocol";
+import { client } from "../../core/client.ts";
 import { tripReset, usePending } from "../../core/commands.ts";
 import { registerScreen } from "../../core/registry.ts";
 import { useSlow } from "../../core/store.ts";
@@ -44,20 +45,40 @@ export function TripStats({ trip, u }: { trip: TripState; u: Units }) {
   );
 }
 
+export type TripWhich = "A" | "B";
+
+/** Drugi licznik (M4): bridge dokłada `slow.tripB` (addytywnie, spoza typów kontraktu v1.0). */
+export const selectTripB = (s: object): TripState | null => (s as { tripB?: TripState }).tripB ?? null;
+
+/** `trip.reset` z `which` (rozszerzenie M4, patrz docs/proposals/s5-m4-trip-history.md). Stary bridge ignoruje `which` i kasuje A. */
+export function resetTrip(which: TripWhich): Promise<unknown> {
+  if (which === "A") return tripReset();
+  return Promise.resolve(client.send({ t: "trip.reset", id: `tb${Date.now().toString(36)}`, which } as unknown as ClientMsg));
+}
+
+const TRIP_OPTIONS: SegmentOption<TripWhich>[] = [
+  { value: "A", label: "Trip A" },
+  { value: "B", label: "Trip B" },
+];
+
 /** Reset z dwustopniowym potwierdzeniem (pierwsze tapnięcie uzbraja przycisk na 3 s). */
-function ResetButton() {
+function ResetButton({ which }: { which: TripWhich }) {
   const pending = usePending("trip.reset");
   const [armed, setArmed] = useState(false);
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    clearTimeout(timer.current);
+    setArmed(false);
+  }, [which]);
   return (
     <GlassButton
       size="lg"
       tone={armed ? "crit" : "accent"}
       active={armed}
-      pending={pending}
+      pending={which === "A" && pending}
       icon={<Icon name="refresh" />}
-      label={armed ? "Potwierdź reset" : "Resetuj trip A"}
+      label={armed ? "Potwierdź reset" : `Resetuj trip ${which}`}
       onPress={() => {
         if (!armed) {
           setArmed(true);
@@ -66,7 +87,7 @@ function ResetButton() {
         }
         clearTimeout(timer.current);
         setArmed(false);
-        void tripReset();
+        void resetTrip(which);
       }}
     />
   );
@@ -77,9 +98,14 @@ function sinceReset(resetAt: number, now: number): string {
   return formatDuration(Math.max(0, (now - resetAt) / 1000));
 }
 
+const EMPTY_TRIP: TripState = { distance: 0, fuelUsed: 0, driveTime: 0, instantConsumption: null, resetAt: 0 };
+
 function TripScreen() {
   const u = useUnits();
-  const trip = useSlow((s) => s.trip);
+  const [which, setWhich] = useState<TripWhich>("A");
+  const tripA = useSlow((s) => s.trip);
+  const tripB = useSlow(selectTripB);
+  const trip = which === "B" ? (tripB ?? EMPTY_TRIP) : tripA;
   const odometer = useSlow((s) => s.odometer);
   const rangeKm = useSlow((s) => s.fuel.rangeKm);
   const [now, setNow] = useState(() => Date.now());
@@ -90,13 +116,16 @@ function TripScreen() {
   return (
     <div className="ft-screen" data-testid="trip-screen">
       <GlassPanel padding={32} tint="strong">
-        <CardTitle icon={<Icon name="clock" size={20} />}>Komputer pokładowy · Trip A</CardTitle>
+        <div className="ft-spread">
+          <CardTitle icon={<Icon name="clock" size={20} />}>Komputer pokładowy · Trip {which}</CardTitle>
+          <GlassSegmented<TripWhich> options={TRIP_OPTIONS} value={which} onChange={setWhich} />
+        </div>
         <div style={{ height: "var(--s-5)" }} />
         <TripStats trip={trip} u={u} />
         <div style={{ height: "var(--s-5)" }} />
         <div className="ft-spread">
           <span className="ft-dim">Od resetu minęło {sinceReset(trip.resetAt, now)}</span>
-          <ResetButton />
+          <ResetButton which={which} />
         </div>
       </GlassPanel>
       <GlassPanel padding={24}>

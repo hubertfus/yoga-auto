@@ -147,7 +147,13 @@ describe("SmtcMediaProvider", () => {
     p.onChange((s) => seen.push(s));
     procs[0]!.send({ t: "state", s: raw() });
     await vi.advanceTimersByTimeAsync(0);
-    expect(p.getState()).toMatchObject({ title: "Song", artist: "Artist", status: "playing", positionAt: 777, artUrl: null });
+    expect(p.getState()).toMatchObject({
+      title: "Song",
+      artist: "Artist",
+      status: "playing",
+      positionAt: 777,
+      artUrl: null,
+    });
     expect(seen).toHaveLength(1);
     await p.stop();
   });

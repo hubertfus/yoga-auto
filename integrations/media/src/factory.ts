@@ -40,7 +40,10 @@ export class AutoMediaProvider implements MediaProvider {
       this.bind();
       await this.inner.start();
     } catch (e) {
-      this.opts.log?.("warn", `media: ${this.inner.name} niedostępny (${e instanceof Error ? e.message : e}) — fallback null`);
+      this.opts.log?.(
+        "warn",
+        `media: ${this.inner.name} niedostępny (${e instanceof Error ? e.message : e}) — fallback null`,
+      );
       await this.inner.stop().catch(() => {});
       this.inner = new NullMediaProvider();
       this.bind();

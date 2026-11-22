@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaState } from "@yoga-auto/protocol";
-import { getToken } from "../../core/client.ts";
-import { useConnectionSelect, useMedia } from "../../core/store.ts";
+import { client, getToken } from "../../core/client.ts";
+import { store, useConnectionSelect } from "../../core/store.ts";
 import { artSrc, interpolate, mediaView, type MediaView } from "./helpers.ts";
 
 export interface MediaInfo {
@@ -11,9 +11,27 @@ export interface MediaInfo {
   art: string | null;
 }
 
+/**
+ * Własna kopia ostatniego `media`: bridge rozsyła co kilka sekund keyframe `snapshot`, w którym `media` = null
+ * (zob. docs/proposals/s6-snapshot-media.md) i zerowałby store. Kopia jest czyszczona tylko przy nowej sesji bridge'a.
+ */
+let latest: MediaState | null = store.state.media;
+let session = store.conn.session;
+const listeners = new Set<() => void>();
+client.onMessage((msg) => {
+  if (msg.t === "hello" && msg.session !== session) {
+    session = msg.session;
+    latest = null;
+  } else if (msg.t === "media") latest = msg.media;
+  else return;
+  listeners.forEach((l) => l());
+});
+const subscribeMedia = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
+const useLatestMedia = (): MediaState | null => useSyncExternalStore(subscribeMedia, () => latest);
+
 export function useMediaInfo(): MediaInfo {
   const capable = useConnectionSelect((c) => c.hello?.capabilities.media === true);
-  const media = useMedia();
+  const media = useLatestMedia();
   return { view: mediaView(capable, media), media, art: artSrc(media?.artUrl ?? null, getToken()) };
 }
 

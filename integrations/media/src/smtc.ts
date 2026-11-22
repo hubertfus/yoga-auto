@@ -25,7 +25,15 @@ export const defaultSpawn =
   (preferSpotify) =>
     nodeSpawn(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, ...(preferSpotify ? ["-PreferSpotify"] : [])],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        script,
+        ...(preferSpotify ? ["-PreferSpotify"] : []),
+      ],
       { stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
     ) as unknown as HelperProcess;
 
@@ -216,7 +224,9 @@ export class SmtcMediaProvider implements MediaProvider {
   }
 
   private refresh(): void {
-    const next = this.raw ? toMediaState(this.raw, this.artByKey.get(trackKey(this.raw)) ?? null, this.opt.now()) : null;
+    const next = this.raw
+      ? toMediaState(this.raw, this.artByKey.get(trackKey(this.raw)) ?? null, this.opt.now())
+      : null;
     this.state = next;
     for (const h of this.handlers) h(next);
   }
@@ -240,10 +250,13 @@ export class SmtcMediaProvider implements MediaProvider {
       this.gaveUp = true;
       return;
     }
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      if (!this.stopped) this.launch();
-    }, this.opt.backoffMs(this.failures - 1));
+    this.restartTimer = setTimeout(
+      () => {
+        this.restartTimer = null;
+        if (!this.stopped) this.launch();
+      },
+      this.opt.backoffMs(this.failures - 1),
+    );
   }
 
   private failPending(err: Error): void {

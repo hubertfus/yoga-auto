@@ -32,7 +32,11 @@ export function formatTime(s: number | null): string {
 /** Nazwa aplikacji do pokazania: "Spotify.exe" → "Spotify", "Chrome" → "Chrome". */
 export function sourceLabel(source: string | null): string | null {
   if (!source) return null;
-  const base = source.replace(/\.exe$/i, "").split("!").pop() ?? source;
+  const base =
+    source
+      .replace(/\.exe$/i, "")
+      .split("!")
+      .pop() ?? source;
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
 

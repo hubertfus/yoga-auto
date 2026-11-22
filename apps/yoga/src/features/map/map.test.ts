@@ -65,6 +65,22 @@ describe("style", () => {
     expect(validateStyleMin(buildStyle(FALLBACK_COLORS, tiles) as never)).toEqual([]);
     expect(validateStyleMin(buildStyle(FALLBACK_COLORS, null) as never)).toEqual([]);
   });
+
+  it("jezdnie z pasami (roads.pmtiles): warstwy pasów po liniach, przed symbolami; styl poprawny", () => {
+    const tiles = { url: "http://x/a.pmtiles", layers: ["ets2"], lanes: "http://x/roads.pmtiles" };
+    const s = buildStyle(FALLBACK_COLORS, tiles);
+    expect(s.sources.lanes).toMatchObject({ type: "vector", url: "pmtiles://http://x/roads.pmtiles" });
+    const ids = s.layers.map((l) => l.id);
+    expect(ids).toContain("lane-surface-r");
+    expect(ids).toContain("lane-sep-l3");
+    expect(ids.indexOf("line-ets2")).toBeLessThan(ids.indexOf("lane-edge-r"));
+    expect(ids.indexOf("lane-center")).toBeLessThan(ids.findIndex((x) => x.startsWith("sym-")));
+    expect(validateStyleMin(s as never)).toEqual([]);
+    // bez roads.pmtiles: brak warstw pasów, drogi z kafli bazowych bez wygaszania
+    const plain = buildStyle(FALLBACK_COLORS, { url: "http://x/a.pmtiles", layers: ["ets2"] });
+    expect(plain.layers.some((l) => l.id.startsWith("lane-"))).toBe(false);
+    expect(validateStyleMin(plain as never)).toEqual([]);
+  });
 });
 
 describe("tierDrop", () => {

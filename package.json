@@ -33,7 +33,8 @@
     "bench": "npm run bench -w @yoga-auto/bench",
     "map:build": "npm run map:build -w @yoga-auto/map-tools --",
     "map:calibrate": "npm run map:calibrate -w @yoga-auto/map-tools --",
-    "map:graph": "npm run map:graph -w @yoga-auto/map-tools --"
+    "map:graph": "npm run map:graph -w @yoga-auto/map-tools --",
+    "map:lanes": "npm run map:lanes -w @yoga-auto/map-tools --"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

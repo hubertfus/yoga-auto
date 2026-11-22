@@ -6,6 +6,8 @@ import type { TileSource } from "./style.ts";
 
 export const TILES_PATH = "/tiles/europe.pmtiles";
 export const PROJECTION_PATH = "/tiles/projection.json";
+/** jezdnie z pasami (opcjonalne, `map:lanes`) */
+export const LANES_PATH = "/tiles/roads.pmtiles";
 
 export interface TileProbe {
   tiles: TileSource | null;
@@ -51,8 +53,23 @@ export async function probeTiles(): Promise<TileProbe> {
     const meta = (await p.getMetadata()) as { vector_layers?: { id: string }[] } | undefined;
     const layers = meta?.vector_layers?.map((l) => l.id) ?? [];
     if (!layers.length) return { tiles: null, projection, reason: "kafle bez warstw wektorowych" };
-    return { tiles: { url, layers }, projection };
+    const lanes = await probeLanes(token);
+    return { tiles: lanes ? { url, layers, lanes } : { url, layers }, projection };
   } catch (e) {
     return { tiles: null, projection, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Czy są kafle jezdni z pasami (`roads.pmtiles`); zwraca ich adres albo null (stara instalacja bez map:lanes). */
+async function probeLanes(token: string | null): Promise<string | null> {
+  const url = absolute(withToken(LANES_PATH, token));
+  try {
+    const p = new PMTiles(url);
+    const meta = (await p.getMetadata()) as { vector_layers?: { id: string }[] } | undefined;
+    if (!meta?.vector_layers?.some((l) => l.id === "lanes")) return null;
+    pmtilesProtocol().add(p);
+    return url;
+  } catch {
+    return null;
   }
 }

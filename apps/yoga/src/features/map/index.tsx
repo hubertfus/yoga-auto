@@ -25,7 +25,13 @@ function MapScreen() {
   };
   return (
     <div className="map-screen" data-testid="map-screen">
-      <MapView controlsRef={controls} onFollowChange={setFollow} onHeadingUpChange={setHeadingUp} onLongPress={onLongPress} />
+      <MapView
+        controlsRef={controls}
+        zoom={14}
+        onFollowChange={setFollow}
+        onHeadingUpChange={setHeadingUp}
+        onLongPress={onLongPress}
+      />
       <RouteOverlay />
       {pick ? (
         <div className="map-pick" style={{ left: pick.left, top: pick.top }} data-testid="map-pick">
@@ -113,7 +119,7 @@ function RouteOverlay({ compact = false }: { compact?: boolean }) {
 function MapWidget() {
   return (
     <div className="map-widget" data-testid="map-widget">
-      <MapView interactive={false} zoom={11.5} />
+      <MapView interactive={false} zoom={13} />
       <RouteOverlay compact />
     </div>
   );
@@ -125,7 +131,7 @@ function withMapBackground(Inner: ComponentType): ComponentType {
     return (
       <div className="map-nav-wrap" data-testid="nav-map-bg">
         <div className="map-nav-bg" aria-hidden="true">
-          <MapView interactive={false} zoom={12} />
+          <MapView interactive={false} zoom={13.5} />
         </div>
         <div className="map-nav-fg">
           <Inner />

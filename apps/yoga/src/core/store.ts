@@ -48,6 +48,9 @@ export interface ConnectionInfo {
 
 type Listener = () => void;
 
+/** Minimalny odstęp między kolejnymi `resync` (ochrona przed pętlą gap → snapshot → gap). */
+export const RESYNC_MIN_INTERVAL_MS = 1000;
+
 const raf: (cb: () => void) => void = (cb) =>
   typeof requestAnimationFrame === "function" ? requestAnimationFrame(cb) : setTimeout(cb, 16);
 
@@ -69,6 +72,7 @@ export class TelemetryStore {
   lastSeq = 0;
   /** wysłano `resync`, czekamy na snapshot — nie spamujemy kolejnymi */
   resyncPending = false;
+  private lastResyncAt = -Infinity;
   private listeners = new Set<Listener>();
   private fastListeners = new Set<Listener>();
   private eventListeners = new Set<(e: GameEvent) => void>();
@@ -102,6 +106,7 @@ export class TelemetryStore {
     this.conn = initialConn();
     this.lastSeq = 0;
     this.resyncPending = false;
+    this.lastResyncAt = -Infinity;
     this.rafPending = false;
     this.notify();
     this.notifyFast();
@@ -165,8 +170,11 @@ export class TelemetryStore {
   private checkSeq(seq: number) {
     if (typeof seq !== "number") return;
     // Zasada 2: dziura w seq → resync; delty stosujemy dalej do czasu snapshotu.
-    if (this.lastSeq && seq > this.lastSeq + 1 && !this.resyncPending) {
+    // Limit: bridge, który notorycznie gubi seq, nie może zalać nas snapshotami (≤ 1 resync/s).
+    const gap = this.lastSeq > 0 && seq > this.lastSeq + 1;
+    if (gap && !this.resyncPending && performance.now() - this.lastResyncAt >= RESYNC_MIN_INTERVAL_MS) {
       this.resyncPending = true;
+      this.lastResyncAt = performance.now();
       this.onGap();
     }
     this.lastSeq = Math.max(this.lastSeq, seq);

@@ -34,3 +34,14 @@ export function installDevMocks(): void {
     return real(input, init);
   };
 }
+
+/** Dev: `window.__yoga` = { store, client, navigate } do ręcznego wstrzykiwania wiadomości z konsoli. */
+export async function exposeDebugHandles(): Promise<void> {
+  if (!import.meta.env.DEV) return;
+  const [{ store }, { client }, { navigate }] = await Promise.all([
+    import("../core/store.ts"),
+    import("../core/client.ts"),
+    import("../core/router.ts"),
+  ]);
+  (globalThis as unknown as { __yoga: unknown }).__yoga = { store, client, navigate };
+}

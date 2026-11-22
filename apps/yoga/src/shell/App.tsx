@@ -13,7 +13,7 @@ import { Home } from "./Home.tsx";
 import { Transition } from "./ScreenHost.tsx";
 import { ShellStatusBar } from "./StatusBarContent.tsx";
 import { ToastHost } from "./Toasts.tsx";
-import { devForce, installDevMocks } from "./devTools.ts";
+import { devForce, exposeDebugHandles, installDevMocks } from "./devTools.ts";
 import { gateFor, OFFLINE_OK_SCREENS } from "./gate.ts";
 import { installGestureGuards, installHoldSafety, installWakeLock } from "./kiosk.ts";
 import { registerServiceWorker } from "./pwa.ts";
@@ -25,6 +25,7 @@ import "./shell.css";
 
 registerScreen({ id: "settings", label: "Ustawienia", icon: "settings", order: 1000, component: SettingsScreen });
 installDevMocks();
+void exposeDebugHandles();
 
 const portraitQuery = typeof window !== "undefined" ? window.matchMedia("(orientation: portrait)") : null;
 const subscribeOrientation = (l: () => void) => {

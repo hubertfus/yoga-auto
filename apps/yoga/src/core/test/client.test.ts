@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_STALE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, WS_SUBPROTOCOL, WsCloseCode } from "@yoga-auto/protocol";
 import { ProtocolClient } from "../client.ts";
-import { TelemetryStore } from "../store.ts";
+import { RESYNC_MIN_INTERVAL_MS, TelemetryStore } from "../store.ts";
 import { FakeWebSocket, hello, snapshot } from "./utils.ts";
 
 const FAKE = ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] as const;
@@ -159,7 +159,20 @@ describe("ProtocolClient — seq, resync, sesja", () => {
     // delty stosowane dalej do czasu snapshotu
     expect(store.state.fast.speed).toBe(5);
     ws.serverSend(snapshot(20));
+    vi.advanceTimersByTime(RESYNC_MIN_INTERVAL_MS);
     ws.serverSend({ t: "slow", seq: 22, ts: 0, d: {} });
+    expect(ws.sentOfType("resync")).toHaveLength(2);
+  });
+
+  it("resync co najwyżej raz na RESYNC_MIN_INTERVAL_MS (bridge gubiący seq nie zalewa snapshotami)", () => {
+    setup();
+    const ws = connect();
+    ws.serverSend({ t: "slow", seq: 13, ts: 0, d: {} });
+    ws.serverSend(snapshot(13));
+    ws.serverSend({ t: "slow", seq: 16, ts: 0, d: {} }); // kolejna dziura zaraz po snapshocie
+    expect(ws.sentOfType("resync")).toHaveLength(1);
+    vi.advanceTimersByTime(RESYNC_MIN_INTERVAL_MS);
+    ws.serverSend({ t: "slow", seq: 19, ts: 0, d: {} });
     expect(ws.sentOfType("resync")).toHaveLength(2);
   });
 

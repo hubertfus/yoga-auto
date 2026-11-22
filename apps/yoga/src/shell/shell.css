@@ -38,6 +38,7 @@
   height: 100%;
   overflow: auto;
   overscroll-behavior: none;
+  scrollbar-width: none; /* kiosk: bez widocznych pasków przewijania */
   transition:
     filter var(--dur-slow),
     opacity var(--dur-slow);

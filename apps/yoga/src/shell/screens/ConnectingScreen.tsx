@@ -4,7 +4,7 @@ import { GlassButton, GlassPanel } from "@yoga-auto/glass-ui";
 import { PROTOCOL_VERSION, type InfoRes } from "@yoga-auto/protocol";
 import { client } from "../../core/client.ts";
 import { fetchInfo } from "../../core/pairing.ts";
-import { useConnection } from "../../core/store.ts";
+import { store, useConnection } from "../../core/store.ts";
 
 const INFO_POLL_MS = 2000;
 
@@ -17,7 +17,10 @@ export function ConnectingScreen() {
     let alive = true;
     const poll = async () => {
       const r = await fetchInfo();
-      if (alive) setInfo(r);
+      if (!alive) return;
+      setInfo(r);
+      // HTTP już odpowiada, a WS czeka na backoff → nie marnuj czasu (powrót bridge'a < 5 s)
+      if (r && store.conn.state === "closed") client.reconnect();
     };
     void poll();
     const id = setInterval(poll, INFO_POLL_MS);

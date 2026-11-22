@@ -28,7 +28,9 @@ import { CommandRouter } from "./commands.ts";
 import { mapGameplayEvent } from "./events.ts";
 import { RawChannels, applyConfig, applyTelemetry } from "./mapping.ts";
 import type { BridgeContext, BridgeModule, StaticHandler } from "./modules/types.ts";
+import { LatencyStats } from "./metrics.ts";
 import { StateStore } from "./store.ts";
+import { ClientStream } from "./throttle.ts";
 
 export interface BridgeOptions {
   source: TelemetrySource;
@@ -49,11 +51,8 @@ export interface BridgeOptions {
 interface Client {
   id: string;
   ws: WebSocket;
-  fastHz: number;
-  placement: boolean;
-  /** harmonogram wysyłki fast (akumulowany, bo timery Windows mają ~15.6 ms rozdzielczości) */
-  nextFastAt: number;
-  lastPlacementAt: number;
+  /** throttling per klient: własny seq, własny obraz „co wysłano”, własny harmonogram fast */
+  stream: ClientStream;
 }
 
 const MIME: Record<string, string> = {
@@ -95,20 +94,32 @@ export async function startBridge(opts: BridgeOptions) {
   const modules = opts.modules ?? [];
   let frame = 0;
   let telDirty = false;
+  /** performance.now() ostatniej ramki `tel` (latencja pipe → WS) */
+  let telAt = 0;
+  const telLatency = new LatencyStats();
 
   const router = new CommandRouter(
     () => opts.source,
     () => store.state.status,
   );
 
+  const isOpen = (c: Client) => c.ws.readyState === c.ws.OPEN;
   const send = (c: Client, msg: ServerMsg) => {
-    if (c.ws.readyState === c.ws.OPEN) c.ws.send(JSON.stringify(msg));
+    if (isOpen(c)) c.ws.send(JSON.stringify(msg));
   };
   const broadcast = (msg: ServerMsg) => {
     const s = JSON.stringify(msg);
-    for (const c of clients.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(s);
+    for (const c of clients.values()) if (isOpen(c)) c.ws.send(s);
   };
-  const snapshot = (c: Client) => send(c, { t: "snapshot", seq: store.seq, ts: Date.now(), state: store.state });
+  /** Wiadomości z `seq` (fast/slow/config/status) — numerowane per klient. */
+  type SeqMsg = Extract<ServerMsg, { seq: number }>;
+  const broadcastSeq = (make: (seq: number) => SeqMsg) => {
+    for (const c of clients.values()) if (isOpen(c)) send(c, make(c.stream.nextSeq()));
+  };
+  const snapshot = (c: Client) => {
+    if (telDirty) applyTel();
+    send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
+  };
 
   const capabilities = { input: true, media: modules.some((m) => m.capability === "media"), map: false, record: false };
 
@@ -138,11 +149,14 @@ export async function startBridge(opts: BridgeOptions) {
         raw.merge(m.ch);
         frame = m.frame;
         telDirty = true;
+        telAt = performance.now();
         if (m.paused !== store.state.status.paused) {
           broadcast({ t: "event", ts: Date.now(), event: { kind: m.paused ? "game.paused" : "game.resumed" } });
           store.setStatus({ paused: m.paused });
         }
-        break;
+        flushImmediate();
+        flushFast();
+        return;
       case "cfg":
         applyConfig(store, m);
         if (m.id === "job" && m.attrs && store.state.config.job) {
@@ -169,42 +183,57 @@ export async function startBridge(opts: BridgeOptions) {
 
   function flushImmediate() {
     const cfg = store.takeConfig();
-    if (cfg) broadcast({ t: "config", seq: store.nextSeq(), ts: Date.now(), d: cfg });
+    if (cfg) broadcastSeq((seq) => ({ t: "config", seq, ts: Date.now(), d: cfg }));
     if (store.statusDirty) {
       store.statusDirty = false;
-      broadcast({ t: "status", seq: store.nextSeq(), ts: Date.now(), status: store.state.status });
+      const status = store.state.status;
+      broadcastSeq((seq) => ({ t: "status", seq, ts: Date.now(), status }));
+    }
+  }
+
+  function applyTel() {
+    applyTelemetry(store, raw);
+    telDirty = false;
+  }
+
+  /** Wyślij `fast` każdemu klientowi, który jest „na czasie” i ma coś istotnego do dostania. */
+  function flushFast() {
+    if (telDirty) applyTel();
+    if (!store.state.status.connected || !clients.size) return;
+    const now = Date.now();
+    const fast = store.state.fast;
+    for (const c of clients.values()) {
+      if (!isOpen(c) || !c.stream.fastDue(now)) continue;
+      // backpressure: pomiń `fast` (stan „wysłany” się nie zmienia → następna delta będzie pełna)
+      if (c.ws.bufferedAmount > BACKPRESSURE_BYTES) continue;
+      const d = c.stream.takeFast(fast, now);
+      if (!d) continue;
+      send(c, { t: "fast", seq: c.stream.nextSeq(), ts: now, frame, d });
+      if (telAt) telLatency.add(performance.now() - telAt);
     }
   }
 
   // ─── zegary kanałów ───
-  const tickMs = 1000 / 60;
-  const fastTimer = setInterval(() => {
-    if (telDirty) {
-      applyTelemetry(store, raw);
-      telDirty = false;
-    }
-    if (!store.state.status.connected || !store.dirtyFast.size) return;
-    const now = Date.now();
-    const due = [...clients.values()].filter((c) => now >= c.nextFastAt);
-    if (!due.length) return;
-    const d = store.takeFast();
-    if (!d) return;
-    const seq = store.nextSeq();
-    for (const c of due) {
-      c.nextFastAt = Math.max(now - 1000 / c.fastHz, c.nextFastAt + 1000 / c.fastHz);
-      if (c.ws.bufferedAmount > BACKPRESSURE_BYTES) continue;
-      const delta = { ...d };
-      if (!c.placement || now - c.lastPlacementAt < 1000 / PLACEMENT_MAX_HZ) delete delta.placement;
-      else if (delta.placement) c.lastPlacementAt = now;
-      if (Object.keys(delta).length) send(c, { t: "fast", seq, ts: now, frame, d: delta });
-    }
-  }, tickMs);
+  // `fast` wychodzi głównie od razu po ramce `tel` (flushFast w obsłudze źródła); zegar 60 Hz to
+  // dogrywka dla klientów, którzy nie byli „na czasie”, gdy przyszła ostatnia ramka.
+  const fastTimer = setInterval(flushFast, 1000 / 60);
   const slowTimer = setInterval(() => {
+    if (telDirty) applyTel();
     if (!store.state.status.connected) return;
-    const d = store.takeSlow();
-    if (d) broadcast({ t: "slow", seq: store.nextSeq(), ts: Date.now(), d });
+    const now = Date.now();
+    for (const c of clients.values()) {
+      if (!isOpen(c)) continue;
+      const d = c.stream.takeSlow(store.state.slow);
+      if (d) send(c, { t: "slow", seq: c.stream.nextSeq(), ts: now, d });
+    }
   }, 1000 / slowHz);
   const keyframeTimer = setInterval(() => clients.forEach(snapshot), KEYFRAME_INTERVAL_MS);
+  const metricsTimer = setInterval(() => {
+    if (!telLatency.count) return;
+    const s = telLatency.summary();
+    log("debug", `latency tel→ws.send ms: n=${s.n} p50=${s.p50.toFixed(2)} p95=${s.p95.toFixed(2)} p99=${s.p99.toFixed(2)} max=${s.max.toFixed(2)}`);
+    telLatency.reset();
+  }, 10_000);
 
   // ─── HTTP ───
   const staticDir = opts.staticDir && existsSync(opts.staticDir) ? resolve(opts.staticDir) : null;
@@ -287,10 +316,7 @@ export async function startBridge(opts: BridgeOptions) {
     const c: Client = {
       id: randomUUID().slice(0, 8),
       ws,
-      fastHz: fastHzDefault,
-      placement: false,
-      nextFastAt: 0,
-      lastPlacementAt: 0,
+      stream: new ClientStream(store.state, { fastHz: fastHzDefault }),
     };
     clients.set(c.id, c);
     log("info", `client ${c.id} connected (${clients.size})`);
@@ -300,9 +326,8 @@ export async function startBridge(opts: BridgeOptions) {
       server: { name: "yoga-auto-bridge", version: opts.version ?? "0.1.0", hostname: hostname() },
       session,
       capabilities,
-      rates: { fastHz: c.fastHz, slowHz },
+      rates: { fastHz: c.stream.fastHz, slowHz },
     });
-    if (telDirty) applyTelemetry(store, raw);
     snapshot(c);
     connectHandlers.forEach((h) => h(c.id));
     ws.on("message", async (data) => {
@@ -320,8 +345,8 @@ export async function startBridge(opts: BridgeOptions) {
           snapshot(c);
           break;
         case "subscribe":
-          if (msg.fastHz) c.fastHz = msg.fastHz;
-          if (msg.placement !== undefined) c.placement = msg.placement;
+          if (msg.fastHz === 15 || msg.fastHz === 30 || msg.fastHz === 60) c.stream.fastHz = msg.fastHz;
+          if (typeof msg.placement === "boolean") c.stream.placement = msg.placement;
           break;
         case "cmd":
           send(c, await router.handle(msg, c.id));
@@ -379,6 +404,7 @@ export async function startBridge(opts: BridgeOptions) {
       clearInterval(fastTimer);
       clearInterval(slowTimer);
       clearInterval(keyframeTimer);
+      clearInterval(metricsTimer);
       for (const c of clients.values()) c.ws.close(WsCloseCode.ServerShutdown, "shutdown");
       await Promise.all(modules.map((m) => m.stop().catch(() => {})));
       await opts.source.stop();

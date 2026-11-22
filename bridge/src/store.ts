@@ -1,6 +1,10 @@
-/** StateStore: pełny stan + znaczniki zmienionych grup (do płytkich delt). */
+/**
+ * StateStore: pełny bieżący stan. Delty fast/slow liczy per klient `ClientStream` (throttle.ts);
+ * tutaj zostają tylko znaczniki dla kanałów „przy zmianie” (config, status).
+ */
 import {
   emptyFullState,
+  type Alert,
   type ConfigState,
   type FastState,
   type FullState,
@@ -10,11 +14,11 @@ import {
 
 export class StateStore {
   state: FullState;
-  seq = 0;
-  readonly dirtyFast = new Set<keyof FastState>();
-  readonly dirtySlow = new Set<keyof SlowState>();
   readonly dirtyConfig = new Set<keyof ConfigState>();
   statusDirty = false;
+  /** rośnie przy każdej zmianie fast (tani test „czy w ogóle coś się zmieniło”) */
+  fastVersion = 0;
+  slowVersion = 0;
 
   constructor(source: GameStatus["source"]) {
     this.state = emptyFullState(source);
@@ -23,18 +27,19 @@ export class StateStore {
   setFast<K extends keyof FastState>(key: K, value: FastState[K]): void {
     if (!same(this.state.fast[key], value)) {
       this.state.fast[key] = value;
-      this.dirtyFast.add(key);
+      this.fastVersion++;
     }
   }
 
   setSlow<K extends keyof SlowState>(key: K, value: SlowState[K]): void {
     if (!same(this.state.slow[key], value)) {
       this.state.slow[key] = value;
-      this.dirtySlow.add(key);
+      this.slowVersion++;
     }
   }
 
   setConfig<K extends keyof ConfigState>(key: K, value: ConfigState[K]): void {
+    if (same(this.state.config[key], value)) return;
     this.state.config[key] = value;
     this.dirtyConfig.add(key);
   }
@@ -47,29 +52,17 @@ export class StateStore {
     }
   }
 
-  takeFast(): Partial<FastState> | null {
-    return take(this.dirtyFast, this.state.fast);
-  }
-
-  takeSlow(): Partial<SlowState> | null {
-    return take(this.dirtySlow, this.state.slow);
+  setAlerts(alerts: Alert[]): void {
+    this.state.alerts = alerts;
   }
 
   takeConfig(): Partial<ConfigState> | null {
-    return take(this.dirtyConfig, this.state.config);
+    if (!this.dirtyConfig.size) return null;
+    const d: Partial<ConfigState> = {};
+    for (const k of this.dirtyConfig) (d as Record<string, unknown>)[k] = structuredClone(this.state.config[k]);
+    this.dirtyConfig.clear();
+    return d;
   }
-
-  nextSeq(): number {
-    return ++this.seq;
-  }
-}
-
-function take<T extends object>(dirty: Set<keyof T>, src: T): Partial<T> | null {
-  if (!dirty.size) return null;
-  const d: Partial<T> = {};
-  for (const k of dirty) d[k] = structuredClone(src[k]);
-  dirty.clear();
-  return d;
 }
 
 export function same(a: unknown, b: unknown): boolean {

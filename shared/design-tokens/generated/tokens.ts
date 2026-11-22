@@ -40,7 +40,7 @@ export const tokens = {
   },
   "material": {
     "dark": {
-      "glass-alpha": "62%",
+      "glass-alpha": "66%",
       "glass-alpha-strong": "82%",
       "glass-alpha-clear": "34%",
       "glass-bright": "0.78",

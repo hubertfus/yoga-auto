@@ -65,4 +65,4 @@ function LightsWidget() {
   );
 }
 
-registerWidget({ id: "lights", label: "Światła", size: "1x1", component: LightsWidget });
+registerWidget({ id: "lights", label: "Światła", size: "2x1", sizes: ["2x1", "1x1"], component: LightsWidget });

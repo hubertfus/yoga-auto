@@ -1,0 +1,37 @@
+/* Trasa GPS: panel manewru i lista. Tylko tokeny. */
+.rt-empty { color: var(--text-3); font: var(--t-body, inherit); }
+
+.rt-next { display: flex; flex-direction: column; gap: var(--s-3); }
+.rt-next__main { display: flex; align-items: center; gap: var(--s-4); min-width: 0; }
+.rt-next__icon {
+  display: grid; place-items: center; flex: none;
+  width: 96px; height: 96px; border-radius: var(--r-lg, 24px);
+  color: #fff; background: var(--accent);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.rt-next__txt { min-width: 0; }
+.rt-next__dist { font: var(--t-display); font-size: 64px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.rt-next__label { font: var(--t-h2); color: var(--text-2); margin-top: var(--s-1, 4px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-next[data-off] .rt-next__icon { background: var(--warn); }
+.rt-next[data-off] .rt-next__label { color: var(--warn); }
+
+.rt-next[data-compact] { gap: var(--s-2); }
+.rt-next[data-compact] .rt-next__main { gap: var(--s-3); }
+.rt-next[data-compact] .rt-next__icon { width: 64px; height: 64px; border-radius: var(--r-md, 16px); }
+.rt-next[data-compact] .rt-next__dist { font: var(--t-h1); font-weight: 700; }
+.rt-next[data-compact] .rt-next__label { font: var(--t-label); }
+
+.rt-then { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); color: var(--text-2); font: var(--t-label); }
+.rt-then__k { text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin-right: var(--s-1, 4px); }
+
+.rt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rt-list li {
+  display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-sm, 10px);
+  background: color-mix(in oklch, var(--text-1) 6%, transparent);
+}
+.rt-list li[data-dim] { background: none; color: var(--text-3); }
+.rt-list__icon { display: grid; place-items: center; color: var(--accent); }
+.rt-list li[data-dim] .rt-list__icon { color: var(--text-3); }
+.rt-list__text { font: var(--t-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-list__dist { font: var(--t-label); font-variant-numeric: tabular-nums; color: var(--text-2); }

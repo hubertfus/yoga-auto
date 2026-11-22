@@ -19,3 +19,16 @@
 .map-nav-bg { position: absolute; inset: 0; border-radius: var(--r-lg, 24px); overflow: hidden; pointer-events: none; opacity: 0.9; }
 .map-nav-bg .map-view { border-radius: 0; }
 .map-nav-fg { position: relative; z-index: 1; height: 100%; min-height: 0; }
+
+/* trasa: panel manewru na mapie */
+.map-route-overlay {
+  position: absolute; left: calc(var(--s-2) + var(--s-3)); top: calc(var(--s-2) + var(--s-3)); z-index: 2;
+  max-width: min(440px, calc(100% - 120px)); padding: var(--s-4); border-radius: var(--r-lg, 24px);
+  background: var(--glass-flat, var(--glass-tint)); backdrop-filter: blur(16px); pointer-events: none;
+}
+.map-route-overlay[data-compact] { left: var(--s-2); top: var(--s-2); max-width: calc(100% - 2 * var(--s-2)); padding: var(--s-2) var(--s-3); border-radius: var(--r-md, 16px); }
+
+/* widget Home: mapa wypełnia kafel (karta ma padding — wychodzimy na krawędzie) */
+.map-widget { position: relative; height: calc(100% + 2 * var(--s-4)); margin: calc(var(--s-4) * -1); }
+.map-widget .map-view { border-radius: inherit; }
+.map-widget .map-nofix, .map-widget .map-empty { font: var(--t-caption); }

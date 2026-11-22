@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { WidgetDef } from "../registry.ts";
 import { DEFAULT_HOME_LAYOUT } from "../registry.ts";
 import {
+  ADDED_IN_V3,
   addId,
   addableWidgets,
   dropOnId,
   dropOnPageEnd,
   loadLayout,
+  migrateToV3,
   moveId,
   paginate,
   parseLayout,
@@ -27,19 +29,29 @@ const W = (id: string, size: WidgetDef["size"] = "1x1"): WidgetDef => ({
 describe("zapis układu: wersja schematu i migracja", () => {
   beforeEach(() => localStorage.clear());
 
-  it("zapisuje v2 i odczytuje", () => {
+  it("zapisuje v3 i odczytuje", () => {
     saveLayout(["a", "b"]);
-    expect(JSON.parse(localStorage.getItem("yoga-auto.home.v2")!)).toEqual({ v: 2, ids: ["a", "b"] });
+    expect(JSON.parse(localStorage.getItem("yoga-auto.home.v3")!)).toEqual({ v: 3, ids: ["a", "b"] });
     expect(loadLayout()).toEqual(["a", "b"]);
   });
-  it("migruje v1 (goła tablica) do v2 i kasuje stary klucz", () => {
+  it("migruje v1 (goła tablica) do v3: dokłada mapę i skróty, kasuje stary klucz", () => {
     localStorage.setItem("yoga-auto.home.v1", JSON.stringify(["x", "y"]));
-    expect(loadLayout()).toEqual(["x", "y"]);
+    const expected = [...ADDED_IN_V3.front, "x", "y", ...ADDED_IN_V3.back];
+    expect(loadLayout()).toEqual(expected);
     expect(localStorage.getItem("yoga-auto.home.v1")).toBeNull();
-    expect(JSON.parse(localStorage.getItem("yoga-auto.home.v2")!).ids).toEqual(["x", "y"]);
+    expect(JSON.parse(localStorage.getItem("yoga-auto.home.v3")!).ids).toEqual(expected);
   });
-  it("v2 wygrywa z v1", () => {
+  it("migruje v2 do v3 bez duplikatów (mapa już była)", () => {
+    localStorage.setItem("yoga-auto.home.v2", JSON.stringify({ v: 2, ids: ["speed", "map", "sc.trip"] }));
+    const got = loadLayout()!;
+    expect(got[0]).toBe("map");
+    expect(got.filter((x) => x === "sc.trip")).toHaveLength(1);
+    expect(got).toEqual(migrateToV3(["speed", "map", "sc.trip"]));
+    expect(localStorage.getItem("yoga-auto.home.v2")).toBeNull();
+  });
+  it("v3 wygrywa z v1/v2", () => {
     localStorage.setItem("yoga-auto.home.v1", JSON.stringify(["old"]));
+    localStorage.setItem("yoga-auto.home.v2", JSON.stringify({ v: 2, ids: ["old2"] }));
     saveLayout(["new"]);
     expect(loadLayout()).toEqual(["new"]);
   });
@@ -110,25 +122,38 @@ describe("resolveWidgets + paginate z układem użytkownika", () => {
   it("zapisany układ jest wierny (usunięte nie wracają, nieznane id pomijane)", () => {
     expect(resolveWidgets(["c", "ghost", "a"], all).map((w) => w.id)).toEqual(["c", "a"]);
   });
-  it("kolejność decyduje o stronie: 8 kafli 1x1 mieści się na 1 stronie, 9. idzie na drugą", () => {
-    const nine = Array.from({ length: 9 }, (_, i) => W(`w${i}`));
+  it("kolejność decyduje o stronie: 18 kafli 1x1 mieści się na 1 stronie (6×3), 19. idzie na drugą", () => {
+    const many = Array.from({ length: 19 }, (_, i) => W(`w${i}`));
     const pages = paginate(resolveWidgets(
-      nine.map((w) => w.id),
-      nine,
+      many.map((w) => w.id),
+      many,
     ));
-    expect(pages.map((p) => p.length)).toEqual([8, 1]);
-    // przeniesienie ostatniego na początek wypycha dotychczasowy 8. na stronę 2
+    expect(pages.map((p) => p.length)).toEqual([18, 1]);
+    // przeniesienie ostatniego na początek wypycha dotychczasowy 18. na stronę 2
     const moved = moveId(
-      nine.map((w) => w.id),
-      "w8",
+      many.map((w) => w.id),
+      "w18",
       0,
     );
-    const p2 = paginate(resolveWidgets(moved, nine));
-    expect(p2[1]!.map((x) => x.widget.id)).toEqual(["w7"]);
+    const p2 = paginate(resolveWidgets(moved, many));
+    expect(p2[1]!.map((x) => x.widget.id)).toEqual(["w17"]);
+  });
+  it("siatkę można podać jawnie: 8 kafli 1x1 na stronie 4×2", () => {
+    const nine = Array.from({ length: 9 }, (_, i) => W(`w${i}`));
+    expect(paginate(nine, 4, 2).map((p) => p.length)).toEqual([8, 1]);
+  });
+  it("domyślny układ: mapa 2×2 w rogu, skróty w dolnym rzędzie (6×3)", () => {
+    const mix = [W("map", "2x2"), W("speed", "2x1"), W("nav"), W("job"), W("media", "2x1"), W("lights", "2x1"), ...[1, 2, 3, 4, 5, 6].map((i) => W(`sc${i}`))];
+    const pages = paginate(mix);
+    expect(pages).toHaveLength(1);
+    const at = (id: string) => pages[0]!.find((p) => p.widget.id === id)!;
+    expect([at("map").row, at("map").col, at("map").w, at("map").h]).toEqual([0, 0, 2, 2]);
+    expect([at("lights").row, at("lights").col]).toEqual([1, 4]);
+    expect([1, 2, 3, 4, 5, 6].map((i) => at(`sc${i}`).row)).toEqual([2, 2, 2, 2, 2, 2]);
   });
   it("kafle 2x1 i 1x1 pakują się w siatce 4x2", () => {
     const mix = [W("big", "2x1"), W("s1"), W("s2"), W("big2", "2x1"), W("big3", "2x1")];
-    const pages = paginate(mix);
+    const pages = paginate(mix, 4, 2);
     expect(pages).toHaveLength(1);
     expect(pages[0]!.map((p) => [p.widget.id, p.row, p.col])).toEqual([
       ["big", 0, 0],

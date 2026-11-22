@@ -1,0 +1,18 @@
+{
+  "t": "route",
+  "ts": 1790000000700,
+  "route": {
+    "id": "mbx1",
+    "to": { "city": "Poznań", "company": "Kaarfor" },
+    "points": [5000, -9000, 5080, -9010, 5100, -9100, 21000, -9600, 21050, -9590],
+    "city": [0, 2, 3, 4],
+    "length": 16260,
+    "duration": 780,
+    "maneuvers": [
+      { "at": 90, "kind": "right", "angle": 82 },
+      { "at": 16180, "kind": "left", "angle": -81 },
+      { "at": 16260, "kind": "arrive", "angle": 0 }
+    ],
+    "computedAt": 1790000000700
+  }
+}

@@ -6,6 +6,7 @@
   "description": "S8: generacja kafli mapy (map:build, zewnetrzne narzedzie truckermudgeon/maps), kalibracja projekcji.",
   "scripts": {
     "map:build": "node src/build.ts",
-    "map:calibrate": "node src/calibrate.ts"
+    "map:calibrate": "node src/calibrate.ts",
+    "map:graph": "node --max-old-space-size=8192 src/graph.ts"
   }
 }

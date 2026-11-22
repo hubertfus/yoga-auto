@@ -1,12 +1,12 @@
 /**
- * Układ Home: kolejność widgetów (localStorage) i pakowanie w strony 4×2.
- * Zapis z wersją schematu + migracja v1→v2, operacje edytora (M4) i paginacja.
+ * Układ Home: kolejność widgetów (localStorage) i pakowanie w strony 6×3.
+ * Zapis z wersją schematu + migracja v1/v2→v3, operacje edytora (M4) i paginacja.
  */
 import type { CardSize } from "@yoga-auto/glass-ui";
 import { DEFAULT_HOME_LAYOUT, getWidgets, type WidgetDef } from "../core/registry.ts";
 
-export const GRID_COLS = 4;
-export const GRID_ROWS = 2;
+export const GRID_COLS = 6;
+export const GRID_ROWS = 3;
 
 export interface Placed {
   widget: WidgetDef;
@@ -18,15 +18,30 @@ export interface Placed {
 
 export type Page = Placed[];
 
-export const sizeOf = (size: CardSize): [number, number] => {
+export const sizeOf = (size: CardSize, cols = GRID_COLS, rows = GRID_ROWS): [number, number] => {
   const [w, h] = size.split("x").map(Number) as [number, number];
-  return [Math.min(w, GRID_COLS), Math.min(h, GRID_ROWS)];
+  return [Math.min(w, cols), Math.min(h, rows)];
 };
 
-/** Wersja schematu zapisu układu. v1 = goła tablica id (klucz `home.v1`), v2 = `{ v: 2, ids }` (klucz `home.v2`). */
-export const LAYOUT_VERSION = 2;
+/**
+ * Wersja schematu zapisu układu. v1 = goła tablica id (klucz `home.v1`), v2 = `{ v: 2, ids }` (klucz `home.v2`),
+ * v3 = `{ v: 3, ids }` (klucz `home.v3`, siatka 6×3). Migracja do v3 dokłada nowe widgety (`ADDED_IN_V3`).
+ */
+export const LAYOUT_VERSION = 3;
 const KEY_V1 = "yoga-auto.home.v1";
-const KEY = "yoga-auto.home.v2";
+const KEY_V2 = "yoga-auto.home.v2";
+const KEY = "yoga-auto.home.v3";
+
+/** Widgety wprowadzone razem z siatką 6×3: mapa trafia na początek, skróty na koniec starego układu. */
+export const ADDED_IN_V3: { front: readonly string[]; back: readonly string[] } = {
+  front: ["map"],
+  back: ["sc.hazard", "sc.parkingBrake", "sc.engine", "sc.beacon", "sc.high", "sc.trip"],
+};
+
+/** Stary układ (v1/v2) + nowe widgety v3, bez duplikatów. */
+export const migrateToV3 = (old: readonly string[]): string[] => [
+  ...new Set([...ADDED_IN_V3.front, ...old, ...ADDED_IN_V3.back]),
+];
 
 const isIdList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
@@ -42,17 +57,18 @@ export function parseLayout(raw: string | null): string[] | null {
   }
 }
 
-/** Odczyt z migracją: gdy brak v2, bierze v1 i przepisuje do v2 (v1 zostaje usunięty). */
+/** Odczyt z migracją: gdy brak v3, bierze v2 (albo v1) i przepisuje do v3 (stare klucze są usuwane). */
 export function loadLayout(): string[] | null {
   try {
     const cur = parseLayout(localStorage.getItem(KEY));
     if (cur) return cur;
-    const old = parseLayout(localStorage.getItem(KEY_V1));
-    if (old) {
-      saveLayout(old);
-      localStorage.removeItem(KEY_V1);
-    }
-    return old;
+    const old = parseLayout(localStorage.getItem(KEY_V2)) ?? parseLayout(localStorage.getItem(KEY_V1));
+    if (!old) return null;
+    const next = migrateToV3(old);
+    saveLayout(next);
+    localStorage.removeItem(KEY_V1);
+    localStorage.removeItem(KEY_V2);
+    return next;
   } catch {
     return null;
   }
@@ -63,6 +79,7 @@ export function saveLayout(ids: readonly string[] | null): void {
     if (ids) localStorage.setItem(KEY, JSON.stringify({ v: LAYOUT_VERSION, ids }));
     else {
       localStorage.removeItem(KEY);
+      localStorage.removeItem(KEY_V2);
       localStorage.removeItem(KEY_V1);
     }
   } catch {
@@ -137,20 +154,20 @@ export function resolveWidgets(
   return out;
 }
 
-/** Pakowanie „first-fit” po siatce 4×2: widget w pierwszym wolnym miejscu strony, inaczej nowa strona. */
-export function paginate(widgets: readonly WidgetDef[]): Page[] {
+/** Pakowanie „first-fit” po siatce (domyślnie 6×3): widget w pierwszym wolnym miejscu strony, inaczej nowa strona. */
+export function paginate(widgets: readonly WidgetDef[], cols = GRID_COLS, rows = GRID_ROWS): Page[] {
   const pages: { grid: boolean[][]; items: Page }[] = [];
   const newPage = () => {
     const p = {
-      grid: Array.from({ length: GRID_ROWS }, () => Array<boolean>(GRID_COLS).fill(false)),
+      grid: Array.from({ length: rows }, () => Array<boolean>(cols).fill(false)),
       items: [] as Page,
     };
     pages.push(p);
     return p;
   };
   const fit = (grid: boolean[][], w: number, h: number): [number, number] | null => {
-    for (let r = 0; r + h <= GRID_ROWS; r++)
-      for (let c = 0; c + w <= GRID_COLS; c++) {
+    for (let r = 0; r + h <= rows; r++)
+      for (let c = 0; c + w <= cols; c++) {
         let free = true;
         for (let dr = 0; dr < h && free; dr++) for (let dc = 0; dc < w; dc++) if (grid[r + dr]![c + dc]) free = false;
         if (free) return [r, c];
@@ -158,7 +175,7 @@ export function paginate(widgets: readonly WidgetDef[]): Page[] {
     return null;
   };
   for (const widget of widgets) {
-    const [w, h] = sizeOf(widget.size);
+    const [w, h] = sizeOf(widget.size, cols, rows);
     let page = pages.at(-1) ?? newPage();
     let pos = fit(page.grid, w, h);
     if (!pos) {

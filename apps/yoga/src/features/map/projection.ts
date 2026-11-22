@@ -24,10 +24,16 @@ export interface LccParams {
 /** Domyślne parametry LCC (niezweryfikowane; patrz nagłówek). */
 export const DEFAULT_LCC: LccParams = { radius: 6_371_000, phi1: 37, phi2: 65, phi0: 50, lambda0: 15 };
 
-/** Podobieństwo na płaszczyźnie rzutu: P = a·w + b, liczby zespolone (w = x + i·(−z) w metrach gry). */
+/**
+ * Transformacja na płaszczyźnie rzutu:
+ * - domyślnie podobieństwo `P = a·w + b` (w = x + i·(−z) w metrach gry),
+ * - opcjonalnie pełna macierz afiniczna `m = [m00, m01, m10, m11]` (uwzględnia różną skalę osi X i Z w ETS2):
+ *   `px = m00·x + m01·(−z) + b.re`, `py = m10·x + m11·(−z) + b.im`.
+ */
 export interface Calibration {
   a: { re: number; im: number };
   b: { re: number; im: number };
+  m?: readonly [number, number, number, number];
 }
 
 /** Domyślnie: skala 19 (1 m gry = 19 m rzeczywistych), bez obrotu i przesunięcia. */
@@ -74,30 +80,35 @@ export function lccInverse(x: number, y: number, p: LccParams = DEFAULT_LCC): { 
   return { lon: p.lambda0 + theta / n / DEG, lat };
 }
 
+function calibMatrix(cal: Calibration): readonly [number, number, number, number] {
+  return cal.m ?? [cal.a.re, -cal.a.im, cal.a.im, cal.a.re];
+}
+
 /** Świat gry (x wschód, z południe, m) → lon/lat. */
 export function gameToLonLat(
   x: number,
   z: number,
   cfg: ProjectionConfig = DEFAULT_PROJECTION,
 ): { lon: number; lat: number } {
-  const { a, b } = cfg.calibration;
+  const [m00, m01, m10, m11] = calibMatrix(cfg.calibration);
+  const { b } = cfg.calibration;
   const wr = x;
   const wi = -z;
-  const px = a.re * wr - a.im * wi + b.re;
-  const py = a.re * wi + a.im * wr + b.im;
+  const px = m00 * wr + m01 * wi + b.re;
+  const py = m10 * wr + m11 * wi + b.im;
   return lccInverse(px, py, cfg.lcc);
 }
 
 /** lon/lat → świat gry (odwrotność `gameToLonLat`). */
 export function lonLatToGame(lon: number, lat: number, cfg: ProjectionConfig = DEFAULT_PROJECTION): { x: number; z: number } {
-  const { a, b } = cfg.calibration;
+  const [m00, m01, m10, m11] = calibMatrix(cfg.calibration);
+  const { b } = cfg.calibration;
   const p = lccForward(lon, lat, cfg.lcc);
   const dr = p.x - b.re;
   const di = p.y - b.im;
-  const d = a.re * a.re + a.im * a.im;
-  // w = (P − b) / a
-  const wr = (dr * a.re + di * a.im) / d;
-  const wi = (di * a.re - dr * a.im) / d;
+  const det = m00 * m11 - m01 * m10;
+  const wr = (m11 * dr - m01 * di) / det;
+  const wi = (-m10 * dr + m00 * di) / det;
   return { x: wr, z: -wi };
 }
 
@@ -167,8 +178,31 @@ export function fitCalibration(
   }
   if (den === 0) throw new Error("fitCalibration: kotwice w tym samym punkcie");
   const a = { re: numRe / den, im: numIm / den };
-  const b = { re: Pm.re - (a.re * wm.re - a.im * wm.im), im: Pm.im - (a.re * wm.im + a.im * wm.re) };
-  const calibration: Calibration = { a, b };
+  let b = { re: Pm.re - (a.re * wm.re - a.im * wm.im), im: Pm.im - (a.re * wm.im + a.im * wm.re) };
+  let m: readonly [number, number, number, number] | undefined;
+  if (w.length >= 3) {
+    // 2×2 normal equations dla pełnej afinicznej transformacji (różna skala osi X/Z w ETS2)
+    let sxx = 0, sxy = 0, syy = 0, sxpx = 0, sypx = 0, sxpy = 0, sypy = 0;
+    for (let i = 0; i < w.length; i++) {
+      const dx = w[i]!.re - wm.re;
+      const dy = w[i]!.im - wm.im;
+      const dpx = P[i]!.re - Pm.re;
+      const dpy = P[i]!.im - Pm.im;
+      sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+      sxpx += dx * dpx; sypx += dy * dpx;
+      sxpy += dx * dpy; sypy += dy * dpy;
+    }
+    const det = sxx * syy - sxy * sxy;
+    if (Math.abs(det) > 1e-6 * den * den) {
+      const m00 = (syy * sxpx - sxy * sypx) / det;
+      const m01 = (-sxy * sxpx + sxx * sypx) / det;
+      const m10 = (syy * sxpy - sxy * sypy) / det;
+      const m11 = (-sxy * sxpy + sxx * sypy) / det;
+      m = [m00, m01, m10, m11];
+      b = { re: Pm.re - (m00 * wm.re + m01 * wm.im), im: Pm.im - (m10 * wm.re + m11 * wm.im) };
+    }
+  }
+  const calibration: Calibration = m ? { a, b, m } : { a, b };
   const cfg: ProjectionConfig = { lcc, calibration };
   const errs = anchors.map((p) => haversineM(gameToLonLat(p.x, p.z, cfg), p, lcc.radius));
   const rmsRealM = Math.sqrt(errs.reduce((s, e) => s + e * e, 0) / errs.length);
@@ -185,5 +219,9 @@ export function parseProjection(raw: unknown): ProjectionConfig | null {
   if (!c?.a || !c.b || !num(c.a.re) || !num(c.a.im) || !num(c.b.re) || !num(c.b.im)) return null;
   const lcc = { ...DEFAULT_LCC, ...l };
   if (![lcc.radius, lcc.phi1, lcc.phi2, lcc.phi0, lcc.lambda0].every(num)) return null;
-  return { lcc, calibration: { a: c.a as Calibration["a"], b: c.b as Calibration["b"] } };
+  const m =
+    Array.isArray(c.m) && c.m.length === 4 && c.m.every(num)
+      ? (c.m as unknown as readonly [number, number, number, number])
+      : undefined;
+  return { lcc, calibration: m ? { a: c.a as Calibration["a"], b: c.b as Calibration["b"], m } : { a: c.a as Calibration["a"], b: c.b as Calibration["b"] } };
 }

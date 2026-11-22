@@ -36,6 +36,9 @@
         },
         {
           "$ref": "#/definitions/PongMsg"
+        },
+        {
+          "$ref": "#/definitions/RouteMsg"
         }
       ]
     },
@@ -98,6 +101,10 @@
             },
             "record": {
               "type": "boolean"
+            },
+            "route": {
+              "type": "boolean",
+              "description": "bridge liczy trasę GPS (jest `route-graph.bin`); brak pola = nie"
             }
           },
           "required": [
@@ -1952,6 +1959,140 @@
         "t0",
         "ts"
       ]
+    },
+    "RouteMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "route"
+        },
+        "ts": {
+          "type": "number"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RouteInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null = brak trasy (brak zlecenia / brak grafu / cel nieosiągalny)"
+        }
+      },
+      "required": [
+        "t",
+        "ts",
+        "route"
+      ]
+    },
+    "RouteInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "zmienia się przy każdym przeliczeniu"
+        },
+        "to": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            },
+            "company": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city",
+            "company"
+          ],
+          "description": "cel trasy (firma docelowa zlecenia)"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "polilinia w metrach świata gry: [x0, z0, x1, z1, …]"
+        },
+        "city": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Odcinki w obszarach miast: pary [i0, i1] (segmenty od punktu i0 do i1). Gra skaluje odległości pokazywane w GPS inaczej w mieście (`CITY_SCALE`) niż poza nim (`WORLD_SCALE`) — patrz `gameCumulative`."
+        },
+        "length": {
+          "type": "number",
+          "description": "m świata (wzdłuż `points`); dystans „jak w grze” = `gameCumulative(...)`"
+        },
+        "duration": {
+          "type": "number",
+          "description": "s, szacunek wg typów dróg"
+        },
+        "maneuvers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Maneuver"
+          }
+        },
+        "computedAt": {
+          "type": "number",
+          "description": "ms epoch bridge'a"
+        }
+      },
+      "required": [
+        "id",
+        "to",
+        "points",
+        "city",
+        "length",
+        "duration",
+        "maneuvers",
+        "computedAt"
+      ]
+    },
+    "Maneuver": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": "number",
+          "description": "m od początku trasy (wzdłuż `points`)"
+        },
+        "kind": {
+          "$ref": "#/definitions/ManeuverKind"
+        },
+        "angle": {
+          "type": "number",
+          "description": "stopnie, + = w prawo"
+        }
+      },
+      "required": [
+        "at",
+        "kind",
+        "angle"
+      ]
+    },
+    "ManeuverKind": {
+      "type": "string",
+      "enum": [
+        "straight",
+        "keepLeft",
+        "keepRight",
+        "slightLeft",
+        "slightRight",
+        "left",
+        "right",
+        "sharpLeft",
+        "sharpRight",
+        "uturn",
+        "ferry",
+        "arrive"
+      ],
+      "description": "Rodzaj manewru (kąt skrętu: + w prawo, − w lewo)."
     }
   }
 }

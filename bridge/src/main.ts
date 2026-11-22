@@ -7,7 +7,8 @@
  * Konfiguracja: %APPDATA%\yoga-auto\config.json (port, host, fastHz, source, inputEnabled); flagi CLI mają pierwszeństwo.
  */
 import { networkInterfaces } from "node:os";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type TelemetrySource } from "@yoga-auto/protocol";
 import { MOCK_SCENARIOS, createMockSource, type MockScenario } from "@yoga-auto/mock";
@@ -24,6 +25,7 @@ import { startBridge } from "./server.ts";
 import { FileTripStorage } from "./trip.ts";
 import { FileJobStorage } from "./jobs.ts";
 import { PipeSource } from "./sources/pipe.ts";
+import { loadGraph, type RouteGraph } from "./route/graph.ts";
 
 // ostatnia deska ratunku: nieobsłużone odrzucenie obietnicy nie może ubić procesu w Node 24
 process.on("unhandledRejection", (reason) => {
@@ -44,6 +46,7 @@ const { values, positionals } = parseArgs({
     media: { type: "string" },
     "prefer-spotify": { type: "boolean", default: false },
     static: { type: "string" },
+    tiles: { type: "string" },
     record: { type: "string" },
     replay: { type: "string" },
     speed: { type: "string", default: "1" },
@@ -75,6 +78,20 @@ if (settings.source === "mock") {
 const recorder = values.record ? await loadRecorder(values.record, { source: settings.source }) : undefined;
 
 const staticDir = values.static ?? resolve(import.meta.dirname, "../../apps/yoga/dist");
+const tilesDir = values.tiles ?? resolve(import.meta.dirname, "../../tools/map/out");
+const routeGraphFile = join(tilesDir, "route-graph.bin");
+let routeGraph: RouteGraph | null = null;
+if (existsSync(routeGraphFile)) {
+  try {
+    const t0 = performance.now();
+    routeGraph = loadGraph(routeGraphFile);
+    console.log(`[info] trasa GPS: graf ${routeGraph.n} węzłów (${(performance.now() - t0).toFixed(0)} ms)`);
+  } catch (e) {
+    console.warn(`[warn] trasa GPS wyłączona: ${String(e)}`);
+  }
+} else {
+  console.log(`[info] trasa GPS wyłączona: brak ${routeGraphFile} (npm run map:graph)`);
+}
 const mediaMode = resolveMediaMode(values, settings.source);
 const modules =
   mediaMode === "off"
@@ -98,6 +115,8 @@ const bridge = await startBridge({
   inputEnabled: settings.inputEnabled,
   ...(values["no-auth"] ? {} : { devices: new DeviceStore(dir) }),
   staticDir,
+  tilesDir,
+  routeGraph,
   tripStorage: new FileTripStorage(dir),
   tripBStorage: new FileTripStorage(dir, "b"),
   jobStorage: new FileJobStorage(dir),

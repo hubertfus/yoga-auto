@@ -156,12 +156,18 @@ export function createHttpHandler(deps: HttpDeps) {
     }
     if (tilesRoot && path.startsWith("/tiles/")) {
       if (!authorize(deps, tokenFromRequest(req, url), ip)) return json(res, 401, { error: "unauthorized" }, cors);
-      const name = decodeURIComponent(path.slice(7));
-      if (!/^[\w.-]+\.pmtiles$/.test(name)) {
+      let name: string;
+      try {
+        name = decodeURIComponent(path.slice(7));
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      if (!/^[\w.-]+\.(pmtiles|json)$/.test(name) || name.includes("..")) {
         res.writeHead(404).end();
         return;
       }
-      return sendFile(req, res, join(tilesRoot, name), { "cache-control": "private, max-age=86400" });
+      return sendFile(req, res, join(tilesRoot, name), { ...cors, "cache-control": "private, max-age=86400" });
     }
 
     if (!staticRoot) {

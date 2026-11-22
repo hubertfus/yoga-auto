@@ -7,7 +7,8 @@
  *          --dry-run          tylko wypisz plan i sprawdź wymagania; nic nie pobiera ani nie uruchamia
  *          --yes              nie pytaj o zgodę na pobranie (klon + npm install, kilkaset MB)
  *          --generator-args   dodatkowe argumenty dla `generator map` (patrz README repo narzędzia)
- * Wynik:   <out>/meta.json (wersja gry, DLC, commit narzędzia, data) + europe.pmtiles (skopiowany ręcznie, patrz README).
+ * Wynik:   <out>/meta.json (wersja gry, DLC, commit narzędzia, data) + europe.pmtiles (skopiowany ręcznie, patrz README)
+ *          + <out>/route-graph.bin (graf dróg do trasy GPS, `map:graph`).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -108,6 +109,9 @@ async function main(): Promise<void> {
   const parsed = join(cache, "parsed");
   run("npx", ["parser", "-i", args.game, "-o", parsed], repoDir, args.dryRun);
   run("npx", ["generator", "map", "-m", "europe", ...args.generatorArgs], repoDir, args.dryRun);
+  // graf dróg do trasy GPS (bridge): generator graph → tools/map/.cache/graph, potem konwersja do route-graph.bin
+  run("npx", ["generator", "graph", "-m", "europe", "-i", parsed, "-o", join(cache, "graph")], repoDir, args.dryRun);
+  run("node", ["--max-old-space-size=8192", join(here, "graph.ts"), "--cache", cache, "--out", join(args.out, "route-graph.bin")], root, args.dryRun);
 
   if (args.dryRun) {
     console.log("\n(dry-run: nic nie pobrano ani nie uruchomiono)");

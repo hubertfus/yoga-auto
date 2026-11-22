@@ -66,7 +66,7 @@ interface Result {
 }
 
 async function runScenario(scenario: MockScenario, seconds: number): Promise<Result> {
-  const sp = spy(createMockSource({ scenario, speed: scenario === "job-cycle" ? 3 : 1 }));
+  const sp = spy(createMockSource({ scenario, speed: scenario === "job-cycle" ? 6 : 1 }));
   const bridge = await startBridge({ source: sp.source, port: 0, host: "127.0.0.1", auth: false, log: () => {} });
   const client = await TestWsClient.connect(bridge.port);
   const sent: Record<string, number> = {};
@@ -78,11 +78,14 @@ async function runScenario(scenario: MockScenario, seconds: number): Promise<Res
   const t0 = performance.now();
   let tick = 0;
   let id = 0;
+  let lastPing = t0 - 1000;
   while (performance.now() - t0 < seconds * 1000) {
     await sleep(100);
     tick++;
-    if (tick % 10 === 0) {
-      client.send({ t: "ping", t0: performance.now() });
+    // pingi co 1 s zegara ściennego (a nie co 10 ticków: sleep(100) dryfuje, zwłaszcza na Windows)
+    if (performance.now() - lastPing >= 1000) {
+      lastPing = performance.now();
+      client.send({ t: "ping", t0: lastPing });
       note("ping");
     }
     if (tick % 17 === 3) {
@@ -215,7 +218,7 @@ describe(`bridge on mock for ${SECONDS} s (all scenarios in parallel)`, async ()
     });
   }
 
-  // job-cycle działa z x3: dostarczenie po ~20 s zegara ściennego
+  // job-cycle działa z x6: dostarczenie po ~10 s zegara ściennego (zapas na wolniejsze timery)
   it.runIf(SECONDS >= 25)("job-cycle delivers a job.delivered event to the UI", () => {
     const ev = results.get("job-cycle")!.client.of("event");
     expect(ev.some((e) => e.event.kind === "job.delivered")).toBe(true);

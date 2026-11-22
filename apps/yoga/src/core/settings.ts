@@ -19,7 +19,8 @@ export interface Units {
 
 export interface Settings {
   units: Units;
-  theme: "dark" | "light";
+  /** `auto` = wg czasu gry (noc → ciemny + tryb nocny, dzień → jasny), patrz daynight.ts */
+  theme: "dark" | "light" | "auto";
   /** tryb nocny: przyciemnienie + cieplejszy akcent (DESIGN §3.1) */
   night: boolean;
   /** tier Liquid Glass; `auto` = FrameMonitor decyduje */
@@ -49,7 +50,8 @@ function load(): Settings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const s = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULT_SETTINGS, ...s, units: { ...DEFAULT_SETTINGS.units, ...s.units } };
+    const theme = s.theme === "light" || s.theme === "auto" || s.theme === "dark" ? s.theme : DEFAULT_SETTINGS.theme;
+    return { ...DEFAULT_SETTINGS, ...s, theme, units: { ...DEFAULT_SETTINGS.units, ...s.units } };
   } catch {
     return DEFAULT_SETTINGS;
   }

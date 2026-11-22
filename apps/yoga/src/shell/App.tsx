@@ -9,6 +9,7 @@ import { HOME, navigate, useRoute } from "../core/router.ts";
 import { getScreen, getScreens, registerScreen } from "../core/registry.ts";
 import { useSettings } from "../core/settings.ts";
 import { useConnectionSelect, useStatus } from "../core/store.ts";
+import { useAppearance } from "./appearance.ts";
 import { Home } from "./Home.tsx";
 import { Transition } from "./ScreenHost.tsx";
 import { ShellStatusBar } from "./StatusBarContent.tsx";
@@ -53,6 +54,7 @@ export function App() {
   const connState = useConnectionSelect((c) => c.state);
   const status = useStatus();
   const portrait = useIsPortrait();
+  const appearance = useAppearance();
 
   useEffect(() => {
     const offs = [installGestureGuards(), installHoldSafety(), installWakeLock()];
@@ -75,7 +77,7 @@ export function App() {
   ];
 
   return (
-    <GlassProvider tier={settings.tier} theme={settings.theme} night={settings.night}>
+    <GlassProvider tier={settings.tier} theme={appearance.theme} night={appearance.night}>
       <div className="shell" data-orient={portrait ? "portrait" : "landscape"}>
         <ShellStatusBar />
         {gate === "ready" ? (

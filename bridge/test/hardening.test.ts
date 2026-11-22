@@ -298,3 +298,40 @@ describe("hook rekordera (s7-recorder-hook)", () => {
     await c.next("pong");
   });
 });
+
+describe("latencja tel → ws.send (DoD: p95 < 2 ms)", () => {
+  it("300 ramek tel przez PipeSource (named pipe) do 2 klientów WS: p95 < 2 ms", async () => {
+    const path =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\yoga-auto-lat-${process.pid}-${Date.now()}`
+        : join(tmpdir(), `yoga-auto-lat-${process.pid}-${Date.now()}.sock`);
+    const enc = (o: unknown) => {
+      const body = Buffer.from(JSON.stringify(o));
+      const h = Buffer.alloc(4);
+      h.writeUInt32LE(body.length);
+      return Buffer.concat([h, body]);
+    };
+    let sock: Socket | undefined;
+    const srv = createServer((s) => {
+      sock = s;
+      s.on("error", () => {});
+      s.write(enc(hello(IPC_VERSION)));
+    });
+    await new Promise<void>((r) => srv.listen(path, r));
+    const b = await boot(new PipeSource(path));
+    const c1 = await connect(b.port);
+    const c2 = await connect(b.port);
+    c1.send({ t: "subscribe", fastHz: 60 });
+    c2.send({ t: "subscribe", fastHz: 60 });
+    await sleep(200);
+    for (let i = 1; i <= 300; i++) {
+      sock!.write(enc(tel({ "truck.speed": 10 + (i % 40) }, i)));
+      await sleep(16);
+    }
+    const s = b.latency.summary();
+    sock?.destroy();
+    srv.close();
+    expect(s.n).toBeGreaterThan(100);
+    expect(s.p95).toBeLessThan(2);
+  }, 20_000);
+});

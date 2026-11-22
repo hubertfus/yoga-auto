@@ -509,6 +509,8 @@ export async function startBridge(opts: BridgeOptions) {
     store,
     router,
     pairing,
+    /** latencja ramka `tel` → `ws.send` (ms) */
+    latency: telLatency,
     async close() {
       clearInterval(fastTimer);
       clearInterval(slowTimer);

@@ -29,33 +29,3 @@ button {
   font: inherit;
   color: inherit;
 }
-
-.shell {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.shell__body {
-  flex: 1;
-  display: flex;
-  gap: var(--s-4);
-  padding: 0 var(--s-4) var(--s-4);
-  min-height: 0;
-}
-.shell__content {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
-}
-
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: minmax(180px, 1fr);
-  gap: var(--s-4);
-  height: 100%;
-}
-.empty {
-  grid-column: span 4;
-  color: var(--text-3);
-}

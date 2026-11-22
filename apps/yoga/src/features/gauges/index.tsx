@@ -115,7 +115,7 @@ function RpmWidget() {
         label="Obroty silnika"
         tickLabel={(v) => String(v / 100)}
       >
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", transform: "translateY(24%)" }}>
           <div className="ft-mid">
             <FastNumeric select={(f) => f.rpm} spring="gauge" />
           </div>

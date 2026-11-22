@@ -80,6 +80,8 @@ export interface BridgeOptions {
   /** katalog z `*.pmtiles` (M4) */
   tilesDir?: string;
   modules?: BridgeModule[];
+  /** false = komendy `cmd` odrzucane jako `input_disabled` (config.json: inputEnabled) */
+  inputEnabled?: boolean;
   /** nagrywanie sesji do .yarec (`--record`) */
   recorder?: Recorder;
   version?: string;
@@ -171,7 +173,7 @@ export async function startBridge(opts: BridgeOptions) {
     send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
   };
 
-  const capabilities = { input: true, media: modules.some((m) => m.capability === "media"), map: false, record: !!opts.recorder };
+  const capabilities = { input: opts.inputEnabled !== false, media: modules.some((m) => m.capability === "media"), map: false, record: !!opts.recorder };
 
   // ─── źródło telemetrii ───
   opts.source.onMessage((m: SourceMsg) => {
@@ -436,7 +438,9 @@ export async function startBridge(opts: BridgeOptions) {
             if (msg.t !== "trip.reset") send(c, { t: "ack", id: msg.id, ok: false, error: "rate_limited", tookMs: 0 });
             return;
           }
-          if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
+          if (msg.t === "cmd" && opts.inputEnabled === false)
+            send(c, { t: "ack", id: msg.id, ok: false, error: "input_disabled", tookMs: 0 });
+          else if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
           else if (msg.t === "trip.reset") {
             trip.reset();
             store.setSlow("trip", trip.state);

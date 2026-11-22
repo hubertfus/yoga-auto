@@ -9,6 +9,8 @@ import { parseArgs } from "node:util";
 import { DEFAULT_PORT, type TelemetrySource } from "@yoga-auto/protocol";
 import { MOCK_SCENARIOS, createMockSource, type MockScenario } from "@yoga-auto/mock";
 import { MockMediaProvider } from "@yoga-auto/media";
+import { DeviceStore } from "./devices.ts";
+import { dataDir } from "./paths.ts";
 import { createMediaModule } from "./modules/media.ts";
 import { startBridge } from "./server.ts";
 import { PipeSource } from "./sources/pipe.ts";
@@ -47,7 +49,7 @@ const bridge = await startBridge({
   host: values.host,
   fastHz: Number(values["fast-hz"]),
   auth: !values["no-auth"],
-  tokens: new Set(),
+  ...(values["no-auth"] ? {} : { devices: new DeviceStore(dataDir()) }),
   staticDir,
   modules,
 });

@@ -4,10 +4,10 @@
  * S2: parowanie PIN + tokeny, progi throttlingu, alerty, trip, mDNS, recorder, rate limit.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { hostname } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { resolve } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   DEFAULT_FAST_HZ,
@@ -19,12 +19,15 @@ import {
   WS_SUBPROTOCOL,
   WsCloseCode,
   type ClientMsg,
-  type InfoRes,
   type ServerMsg,
   type SourceMsg,
   type TelemetrySource,
 } from "@yoga-auto/protocol";
+import { hostAllowed, isPrivateAddress, originAllowed, type OriginPolicy } from "./access.ts";
 import { CommandRouter } from "./commands.ts";
+import type { DeviceStore } from "./devices.ts";
+import { authorize, createHttpHandler } from "./http.ts";
+import { PairingManager, type PinAnnouncement } from "./pairing.ts";
 import { RateLimiter } from "./ratelimit.ts";
 import { mapGameplayEvent } from "./events.ts";
 import { RawChannels, applyConfig, applyTelemetry } from "./mapping.ts";
@@ -39,11 +42,19 @@ export interface BridgeOptions {
   host?: string;
   fastHz?: number;
   slowHz?: number;
-  /** false = dev, bez tokenu */
+  /** false = dev (`--no-auth`), bez tokenu i parowania */
   auth: boolean;
-  /** tokeny akceptowane przy auth (S2: z devices.json) */
-  tokens?: Set<string>;
+  /** sparowane urządzenia (wymagane przy `auth: true`) */
+  devices?: DeviceStore;
+  /** wywoływane przy `/api/pair/start`: pokaż PIN na PC (konsola/tray) */
+  onPin?: (a: PinAnnouncement) => void;
+  /** co ile ms sprawdzać, czy CLI odwołało urządzenie (domyślnie 2000) */
+  devicePollMs?: number;
+  /** dodatkowe dozwolone nazwy hostów (Host/Origin) */
+  extraHosts?: string[];
   staticDir?: string;
+  /** katalog z `*.pmtiles` (M4) */
+  tilesDir?: string;
   modules?: BridgeModule[];
   version?: string;
   log?: (level: "debug" | "info" | "warn" | "error", msg: string) => void;
@@ -51,39 +62,30 @@ export interface BridgeOptions {
 
 interface Client {
   id: string;
+  /** id sparowanego urządzenia (null przy --no-auth) */
+  deviceId: string | null;
   ws: WebSocket;
   /** throttling per klient: własny seq, własny obraz „co wysłano”, własny harmonogram fast */
   stream: ClientStream;
 }
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".woff2": "font/woff2",
-  ".ico": "image/x-icon",
-};
-
 const BACKPRESSURE_BYTES = 64 * 1024;
 
-export function isPrivateAddress(addr: string | undefined): boolean {
-  if (!addr) return false;
-  const a = addr.replace(/^::ffff:/, "");
-  if (a === "::1" || a.startsWith("127.")) return true;
-  if (/^10\./.test(a) || /^192\.168\./.test(a) || /^169\.254\./.test(a)) return true;
-  const m = /^172\.(\d+)\./.exec(a);
-  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
-  return /^(fe80|fc|fd)/i.test(a);
-}
+export { isPrivateAddress };
 
 export async function startBridge(opts: BridgeOptions) {
   const log = opts.log ?? ((l, m) => console.log(`[${l}] ${m}`));
+  if (opts.auth && !opts.devices) throw new Error("auth: true wymaga opts.devices (DeviceStore)");
   const session = randomUUID().slice(0, 8);
+  const devices = opts.devices ?? null;
+  const policy: OriginPolicy = {
+    extraHosts: (opts.extraHosts ?? []).map((h) => h.toLowerCase()),
+    ownHostnames: [hostname().toLowerCase(), `${hostname().toLowerCase()}.local`],
+  };
+  const pairing =
+    opts.auth && devices
+      ? new PairingManager(devices, opts.onPin ?? ((a) => log("info", `PIN parowania: ${a.pin} (ważny ${a.expiresIn} s)`)))
+      : null;
   const fastHzDefault = opts.fastHz ?? DEFAULT_FAST_HZ;
   const slowHz = opts.slowHz ?? DEFAULT_SLOW_HZ;
   const store = new StateStore(opts.source.kind);
@@ -247,51 +249,24 @@ export async function startBridge(opts: BridgeOptions) {
 
   // ─── HTTP ───
   const staticDir = opts.staticDir && existsSync(opts.staticDir) ? resolve(opts.staticDir) : null;
-  const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403).end();
-      return;
-    }
-    const url = new URL(req.url ?? "/", "http://x");
-    if (url.pathname === "/api/info") {
-      const info: InfoRes = {
-        name: "yoga-auto-bridge",
-        version: opts.version ?? "0.1.0",
-        protocol: { major: PROTOCOL_VERSION, minor: PROTOCOL_MINOR },
-        paired: !opts.auth,
-      };
-      res
-        .writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" })
-        .end(JSON.stringify(info));
-      return;
-    }
-    for (const [prefix, handler] of statics) {
-      if (url.pathname.startsWith(prefix)) {
-        const r = await handler(url.pathname.slice(prefix.length));
-        if (!r) res.writeHead(404).end();
-        else res.writeHead(200, { "content-type": r.mime, "cache-control": `max-age=${r.maxAgeS ?? 0}` }).end(r.data);
-        return;
-      }
-    }
-    if (!staticDir) {
-      res
-        .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
-        .end("yoga-auto bridge działa. Zbuduj PWA: npm run build:app");
-      return;
-    }
-    let file = normalize(join(staticDir, decodeURIComponent(url.pathname)));
-    if (!file.startsWith(staticDir)) {
-      res.writeHead(400).end();
-      return;
-    }
-    if (!existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, "index.html");
-    const isAsset = url.pathname.startsWith("/assets/");
-    res
-      .writeHead(200, {
-        "content-type": MIME[extname(file)] ?? "application/octet-stream",
-        "cache-control": isAsset ? "max-age=31536000, immutable" : "no-cache",
-      })
-      .end(readFileSync(file));
+  const httpDeps = {
+    auth: opts.auth,
+    devices,
+    pairing,
+    statics,
+    staticDir,
+    tilesDir: opts.tilesDir ?? null,
+    version: opts.version ?? "0.1.0",
+    policy,
+    log,
+  };
+  const handler = createHttpHandler(httpDeps);
+  const http = createServer((req, res) => {
+    handler(req, res).catch((e) => {
+      log("error", `http ${req.url}: ${String(e)}`);
+      if (!res.headersSent) res.writeHead(500).end();
+      else res.destroy();
+    });
   });
 
   // ─── WebSocket ───
@@ -299,32 +274,53 @@ export async function startBridge(opts: BridgeOptions) {
     noServer: true,
     handleProtocols: (protocols) => (protocols.has(WS_SUBPROTOCOL) ? WS_SUBPROTOCOL : false),
   });
+  const reject = (socket: import("node:stream").Duplex, code: number, why: string) => {
+    socket.write(`HTTP/1.1 ${code} ${why}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    socket.destroy();
+  };
   http.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://x");
-    if (url.pathname !== "/ws" || !isPrivateAddress(req.socket.remoteAddress)) {
-      socket.destroy();
-      return;
-    }
+    const ip = req.socket.remoteAddress;
+    if (url.pathname !== "/ws") return reject(socket, 404, "Not Found");
+    if (!isPrivateAddress(ip)) return reject(socket, 403, "Forbidden");
+    if (!hostAllowed(req.headers.host, policy)) return reject(socket, 421, "Misdirected Request");
+    if (!originAllowed(req.headers.origin, req.headers.host, policy)) return reject(socket, 403, "Forbidden Origin");
     wss.handleUpgrade(req, socket, head, (ws) => {
       const protos = String(req.headers["sec-websocket-protocol"] ?? "")
         .split(",")
-        .map((s) => s.trim());
+        .map((p) => p.trim());
       if (!protos.includes(WS_SUBPROTOCOL)) {
         ws.close(WsCloseCode.ProtocolMismatch, "protocol mismatch");
         return;
       }
       const token = protos.find((p) => p.startsWith("token."))?.slice(6);
-      if (opts.auth && (!token || !opts.tokens?.has(token))) {
+      const dev = authorize(httpDeps, token, ip);
+      if (!dev) {
+        log("warn", `ws: odrzucono ${ip} (brak/zły token)`);
         ws.close(WsCloseCode.Unauthorized, "unauthorized");
         return;
       }
-      onClient(ws);
+      onClient(ws, dev === "open" ? null : dev.id);
     });
   });
 
-  function onClient(ws: WebSocket) {
+  // odwołanie urządzenia z CLI (osobny proces) → rozłącz je w działającym bridge'u
+  const devicesTimer = devices
+    ? setInterval(() => {
+        for (const id of devices.reloadIfChanged())
+          for (const c of clients.values())
+            if (c.deviceId === id) {
+              log("info", `urządzenie ${id} odwołane, rozłączam klienta ${c.id}`);
+              c.ws.close(WsCloseCode.Unauthorized, "revoked");
+            }
+      }, opts.devicePollMs ?? 2000)
+    : null;
+  devicesTimer?.unref();
+
+  function onClient(ws: WebSocket, deviceId: string | null) {
     const c: Client = {
       id: randomUUID().slice(0, 8),
+      deviceId,
       ws,
       stream: new ClientStream(store.state, { fastHz: fastHzDefault }),
     };
@@ -427,11 +423,15 @@ export async function startBridge(opts: BridgeOptions) {
   return {
     port,
     store,
+    router,
+    pairing,
     async close() {
       clearInterval(fastTimer);
       clearInterval(slowTimer);
       clearInterval(keyframeTimer);
       clearInterval(metricsTimer);
+      if (devicesTimer) clearInterval(devicesTimer);
+      devices?.close();
       for (const c of clients.values()) c.ws.close(WsCloseCode.ServerShutdown, "shutdown");
       await Promise.all(modules.map((m) => m.stop().catch(() => {})));
       await opts.source.stop();

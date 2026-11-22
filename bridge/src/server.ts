@@ -24,6 +24,7 @@ import {
   type TelemetrySource,
 } from "@yoga-auto/protocol";
 import { hostAllowed, isPrivateAddress, originAllowed, type OriginPolicy } from "./access.ts";
+import { AlertEngine, type AlertThresholds } from "./alerts.ts";
 import { CommandRouter } from "./commands.ts";
 import type { DeviceStore } from "./devices.ts";
 import { authorize, createHttpHandler } from "./http.ts";
@@ -35,6 +36,7 @@ import type { BridgeContext, BridgeModule, StaticHandler } from "./modules/types
 import { LatencyStats } from "./metrics.ts";
 import { StateStore } from "./store.ts";
 import { ClientStream } from "./throttle.ts";
+import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
 
 export interface BridgeOptions {
   source: TelemetrySource;
@@ -50,6 +52,12 @@ export interface BridgeOptions {
   onPin?: (a: PinAnnouncement) => void;
   /** co ile ms sprawdzać, czy CLI odwołało urządzenie (domyślnie 2000) */
   devicePollMs?: number;
+  /** gdzie trzymać komputer pokładowy (domyślnie pamięć; CLI podaje FileTripStorage) */
+  tripStorage?: TripStorage;
+  /** nadpisanie progów alertów (testy) */
+  alertThresholds?: Partial<AlertThresholds>;
+  /** okres przeliczania alertów/tripu, ms (domyślnie 250) */
+  rulesEveryMs?: number;
   /** dodatkowe dozwolone nazwy hostów (Host/Origin) */
   extraHosts?: string[];
   staticDir?: string;
@@ -110,6 +118,9 @@ export async function startBridge(opts: BridgeOptions) {
     log,
   });
   const rate = new RateLimiter();
+  const trip = new TripComputer(opts.tripStorage ?? new MemoryTripStorage());
+  const alertEngine = new AlertEngine(opts.alertThresholds);
+  store.setSlow("trip", trip.state);
 
   const isOpen = (c: Client) => c.ws.readyState === c.ws.OPEN;
   const send = (c: Client, msg: ServerMsg) => {
@@ -239,6 +250,17 @@ export async function startBridge(opts: BridgeOptions) {
       if (d) send(c, { t: "slow", seq: c.stream.nextSeq(), ts: now, d });
     }
   }, 1000 / slowHz);
+  // reguły pochodne: komputer pokładowy + alerty
+  const rulesTimer = setInterval(() => {
+    if (telDirty) applyTel();
+    const now = Date.now();
+    store.setSlow("trip", trip.update(store.state, now));
+    const delta = alertEngine.update(store.state, now);
+    if (delta) {
+      store.setAlerts(alertEngine.alerts);
+      broadcast({ t: "alerts", ts: now, raised: delta.raised, cleared: delta.cleared });
+    }
+  }, opts.rulesEveryMs ?? 250);
   const keyframeTimer = setInterval(() => clients.forEach(snapshot), KEYFRAME_INTERVAL_MS);
   const metricsTimer = setInterval(() => {
     if (!telLatency.count) return;
@@ -368,6 +390,11 @@ export async function startBridge(opts: BridgeOptions) {
             return;
           }
           if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
+          else if (msg.t === "trip.reset") {
+            trip.reset();
+            store.setSlow("trip", trip.state);
+            send(c, { t: "ack", id: msg.id, ok: true, tookMs: 0 });
+          }
           break;
         }
         default:
@@ -429,6 +456,8 @@ export async function startBridge(opts: BridgeOptions) {
       clearInterval(fastTimer);
       clearInterval(slowTimer);
       clearInterval(keyframeTimer);
+      clearInterval(rulesTimer);
+      trip.flush();
       clearInterval(metricsTimer);
       if (devicesTimer) clearInterval(devicesTimer);
       devices?.close();

@@ -1,5 +1,7 @@
 # s7-bug-ipc-version-check — bridge nie sprawdza `hello.ipc` (S2)
 
+Status: **WDROŻONE** przez S2 (branch claude/s2-bridge-62ab59, na main od 5d0f0a0).
+
 **Błąd:** PROTOCOL.md §1: „`hello.ipc` musi = `IPC_VERSION`”. `server.ts` na `hello` ustawia `connected:true` bez porównania wersji; plugin z IPC v2 jest traktowany jak v1.
 
 **Skutek:** po zmianie kontraktu (nowy plugin + stary bridge albo odwrotnie) bridge cicho działa na niezgodnych danych zamiast pokazać błąd „zaktualizuj plugin/bridge”.

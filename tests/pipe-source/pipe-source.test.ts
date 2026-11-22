@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type SourceMsg, ipc } from "@yoga-auto/protocol";
 import { FakePipeServer, testPipePath, type FaultSpec } from "@yoga-auto/fake-pipe";
 import { PipeSource } from "../../bridge/src/sources/pipe.ts";
-import { knownBug } from "../support/known-bug.ts";
 import { violations } from "../support/schemas.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -158,9 +157,8 @@ describe("failure mode: garbage frames", () => {
     expect(r.of("disconnected")).toEqual([]);
   });
 
-  knownBug(
+  it(
     "non-object JSON frames (null, [..], 42, object without `t`) must not reach handlers as SourceMsg",
-    "docs/proposals/s7-bug-pipe-nonobject-frame.md",
     async () => {
       const r = await rig({ garbageRate: 0.3, garbageKinds: ["null", "array", "number", "no-t"] });
       await sleep(600);
@@ -174,9 +172,8 @@ describe("failure mode: garbage frames", () => {
     },
   );
 
-  knownBug(
+  it(
     "schema-invalid but well-formed frames (tel with ch:null, cfg with attrs:'oops') must be dropped, not delivered",
-    "docs/proposals/s7-bug-pipe-nonobject-frame.md",
     async () => {
       const r = await rig({ garbageRate: 0.3, garbageKinds: ["bad-tel", "bad-cfg"] });
       await sleep(600);

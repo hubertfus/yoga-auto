@@ -1,3 +1,5 @@
+Status: **WDROŻONE** przez lead (2026-11-22)
+
 # Propozycja S7 → lead: skrypty w root `package.json`, workspaces, tsconfig
 
 Pliki własności leada (`package.json`, `tsconfig.json`, `vitest.config.ts`, `scripts/**`) — S7 nie może ich zmienić.
@@ -35,3 +37,5 @@ Test `tests/contract/bridge-mock` trwa 30 s (`CONTRACT_SECONDS`). Ewentualnie os
 ## 5. Smoke
 
 `scripts/smoke.ts` można przenieść do `tests/` (własność S7) — do decyzji leada.
+
+Uwagi z wdrożenia: dodano `fake-pipe`; `dev:replay` używa już `bridge --source replay`; do workspaces dodano tylko `e2e` (`tests/` nie ma `package.json`, `tools/bench` wchodzi przez `tools/*`); tsconfig `include` + `tests/**`, `e2e/**`.

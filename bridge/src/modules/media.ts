@@ -10,7 +10,13 @@ export function createMediaModule(provider: MediaProvider): BridgeModule {
     capability: "media",
     async start(ctx: BridgeContext) {
       await provider.start();
-      offs.push(provider.onChange((media) => ctx.broadcast({ t: "media", ts: Date.now(), media })));
+      ctx.setMedia(provider.getState());
+      offs.push(
+        provider.onChange((media) => {
+          ctx.setMedia(media);
+          ctx.broadcast({ t: "media", ts: Date.now(), media });
+        }),
+      );
       offs.push(
         ctx.onClientConnected((id) => ctx.sendTo(id, { t: "media", ts: Date.now(), media: provider.getState() })),
       );

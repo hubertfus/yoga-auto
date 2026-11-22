@@ -1,0 +1,20 @@
+{
+  "t": "media",
+  "ts": 1790000000600,
+  "media": {
+    "source": "Spotify.exe",
+    "status": "playing",
+    "title": "Example Track",
+    "artist": "Example Artist",
+    "album": "Example Album",
+    "artUrl": "/media/art/ab12.jpg",
+    "position": 42.5,
+    "duration": 213,
+    "positionAt": 1790000000600,
+    "canPlay": false,
+    "canPause": true,
+    "canNext": true,
+    "canPrev": true,
+    "canSeek": true
+  }
+}

@@ -1,3 +1,5 @@
+Status: **WDROŻONE** przez lead (2026-11-22)
+
 # S6 → S2/S4: keyframe `snapshot` zeruje `media` w kliencie
 
 **Objaw.** Przy `--source mock` UI mediów pokazuje utwór tylko do najbliższego keyframe'u, potem „Nic nie gra" (do ponownego

@@ -1,0 +1,23 @@
+{
+  "t": "config",
+  "seq": 57,
+  "ts": 1790000000500,
+  "d": {
+    "truck": {
+      "brand": "Volvo",
+      "brandId": "volvo",
+      "name": "FH16 2012",
+      "id": "volvo.fh16.2012",
+      "fuelCapacity": 600,
+      "fuelWarningFactor": 0.1,
+      "adblueCapacity": 60,
+      "airPressureWarning": 80,
+      "airPressureEmergency": 40,
+      "rpmLimit": 2300,
+      "forwardGears": 12,
+      "reverseGears": 4,
+      "retarderSteps": 5,
+      "licensePlate": "EX 123"
+    }
+  }
+}

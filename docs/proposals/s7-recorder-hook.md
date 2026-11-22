@@ -1,5 +1,7 @@
 # s7-recorder-hook — hook nagrywania w bridge'u + `--source replay` (dla S2)
 
+Status: **WDROŻONE** przez S2 (branch claude/s2-bridge-62ab59, na main od 5d0f0a0).
+
 **Co:** `startBridge` przyjmuje opcjonalny `recorder` (interfejs z `@yoga-auto/recorder`), a `main.ts` dostaje `--record <plik>` oraz `--source replay --replay plik.yarec [--speed X] [--loop]`.
 **Dlaczego:** DoD S7 i checklista sesji z grą (`bridge --source pipe --record`) — prawdziwe nagrania z gry jako wejście dla testów UI i bench bez ETS2.
 **Wpływ:** tylko S2 (`bridge/src/server.ts`, `main.ts`, `package.json`). Zmiana jest addytywna: bez `recorder` zachowanie jest identyczne. `hello.capabilities.record = !!recorder`.

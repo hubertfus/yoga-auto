@@ -10,6 +10,8 @@
     "bridge/test/**/*",
     "integrations/*/src/**/*",
     "tools/*/src/**/*",
+    "tests/**/*",
+    "e2e/**/*",
     "scripts/**/*"
   ]
 }

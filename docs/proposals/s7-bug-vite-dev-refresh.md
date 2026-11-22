@@ -1,3 +1,5 @@
+Status: **WDROŻONE** przez lead (2026-11-22)
+
 # Bug (S7 → lead/S4): `vite dev` zwraca 500 „Missing field `moduleType`”
 
 **Repro:** `npm install` (świeży) → `npm run dev -w @yoga-auto/yoga` → każda transformacja `.tsx` kończy się
@@ -11,3 +13,5 @@ pasuje do vite 7 uruchamianego dev-serverem. Naprawa po stronie lead/S4: ujednol
 
 **Obejście w e2e:** `e2e/playwright.config.ts` używa `vite build` + `vite preview` (dziedziczy proxy `/ws`).
 Po naprawie można wrócić do dev-servera (szybszy HMR nie jest potrzebny w CI).
+
+Wdrożenie: `apps/yoga` ma `vite ^8.3.8` + `@vitejs/plugin-react ^6.3.0`, po `npm install` jedna wersja vite 8.3.8; `vite dev` zwraca 200 dla /src/main.tsx, `vite build` działa.

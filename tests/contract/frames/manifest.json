@@ -2,39 +2,125 @@
   "maxFrameBytes": 262144,
   "cases": [
     {
+      "file": "valid-cfg.bin",
+      "expect": "messages",
+      "t": [
+        "cfg"
+      ],
+      "note": "fixture ipc/cfg.json"
+    },
+    {
+      "file": "valid-evt.bin",
+      "expect": "messages",
+      "t": [
+        "evt"
+      ],
+      "note": "fixture ipc/evt.json"
+    },
+    {
+      "file": "valid-hb.bin",
+      "expect": "messages",
+      "t": [
+        "hb"
+      ],
+      "note": "fixture ipc/hb.json"
+    },
+    {
       "file": "valid-hello.bin",
       "expect": "messages",
-      "t": ["hello"],
+      "t": [
+        "hello"
+      ],
       "note": "fixture ipc/hello.json"
+    },
+    {
+      "file": "valid-in-ack.bin",
+      "expect": "messages",
+      "t": [
+        "in.ack"
+      ],
+      "note": "fixture ipc/in-ack.json"
     },
     {
       "file": "valid-in-press.bin",
       "expect": "messages",
-      "t": ["in"],
+      "t": [
+        "in"
+      ],
       "note": "fixture ipc/in-press.json"
+    },
+    {
+      "file": "valid-input-active.bin",
+      "expect": "messages",
+      "t": [
+        "input.active"
+      ],
+      "note": "fixture ipc/input-active.json"
+    },
+    {
+      "file": "valid-log.bin",
+      "expect": "messages",
+      "t": [
+        "log"
+      ],
+      "note": "fixture ipc/log.json"
+    },
+    {
+      "file": "valid-opts.bin",
+      "expect": "messages",
+      "t": [
+        "opts"
+      ],
+      "note": "fixture ipc/opts.json"
+    },
+    {
+      "file": "valid-release-all.bin",
+      "expect": "messages",
+      "t": [
+        "releaseAll"
+      ],
+      "note": "fixture ipc/release-all.json"
     },
     {
       "file": "valid-tel.bin",
       "expect": "messages",
-      "t": ["tel"],
+      "t": [
+        "tel"
+      ],
       "note": "fixture ipc/tel.json"
     },
     {
       "file": "valid-stream-all.bin",
       "expect": "messages",
-      "t": ["hello", "in", "tel"],
+      "t": [
+        "cfg",
+        "evt",
+        "hb",
+        "hello",
+        "in.ack",
+        "in",
+        "input.active",
+        "log",
+        "opts",
+        "releaseAll",
+        "tel"
+      ],
       "note": "wszystkie fixture'y IPC jedna po drugiej; podawaj w kawałkach 1, 3, 7 bajtów i całością"
     },
     {
       "file": "valid-unicode.bin",
       "expect": "messages",
-      "t": ["log"],
+      "t": [
+        "log"
+      ],
       "note": "długość w bajtach UTF-8 (ą, 🚚)"
     },
     {
       "file": "valid-max-size.bin",
       "expect": "messages",
-      "t": ["log"],
+      "t": [
+        "log"
+      ],
       "note": "payload dokładnie 262144 B — dozwolony"
     },
     {
@@ -95,8 +181,15 @@
     {
       "file": "mixed-good-bad-good.bin",
       "expect": "messages",
-      "events": ["message", "bad_json", "message"],
-      "t": ["hb", "hb"],
+      "events": [
+        "message",
+        "bad_json",
+        "message"
+      ],
+      "t": [
+        "hb",
+        "hb"
+      ],
       "note": "hb, śmieć o poprawnej długości, hb — po złej ramce parser nadal czyta następną"
     }
   ]

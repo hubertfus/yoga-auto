@@ -1,5 +1,7 @@
 # s7-bug-ws-null-frame — `null` w ramce WS zabija bridge (S2)
 
+Status: **WDROŻONE** przez S2 (branch claude/s2-bridge-62ab59, na main od 5d0f0a0).
+
 **Błąd:** `bridge/src/server.ts`, `ws.on("message")`: `JSON.parse` zwraca `null` dla ramki `null`; `switch (msg.t)` rzuca `TypeError: Cannot read properties of null (reading 't')`. Handler jest `async`, więc to **unhandled rejection**, a w Node 24 domyślnie kończy proces.
 
 **Skutek:** dowolny klient z LAN, który przejdzie autoryzację (albo każdy przy `--no-auth`), zabija bridge jedną ramką `null` (zły klient, fuzzing, błąd w UI).

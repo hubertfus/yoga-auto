@@ -1,0 +1,14 @@
+{
+  "t": "status",
+  "seq": 58,
+  "ts": 1790000000700,
+  "status": {
+    "source": "pipe",
+    "connected": true,
+    "paused": false,
+    "game": "ets2",
+    "gameVersion": "1.18",
+    "inputActive": true,
+    "inputEnabled": true
+  }
+}

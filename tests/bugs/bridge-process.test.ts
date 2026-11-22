@@ -8,7 +8,6 @@ import { afterEach, expect, it } from "vitest";
 import { FakePipeServer, testPipePath, type FaultSpec } from "@yoga-auto/fake-pipe";
 import { startBridge } from "../../bridge/src/server.ts";
 import { PipeSource } from "../../bridge/src/sources/pipe.ts";
-import { knownBug } from "../support/known-bug.ts";
 import { TestWsClient, sleep } from "../support/ws-client.ts";
 
 const child = resolve(import.meta.dirname, "../support/bridge-child.ts");
@@ -42,9 +41,8 @@ async function spawnBridge(
   return { proc, port, exited: () => exited, stderr: () => err };
 }
 
-knownBug(
+it(
   "WS frame `null` (valid JSON, not an object) must not crash the bridge",
-  "docs/proposals/s7-bug-ws-null-frame.md",
   async () => {
     const b = await spawnBridge("mock");
     const c = await TestWsClient.connect(b.port);
@@ -87,9 +85,8 @@ it("plugin frame `tel` with ch:null does not crash the bridge", async () => {
   ).toBe(false);
 }, 20_000);
 
-knownBug(
+it(
   "plugin hello with a different IPC version must be refused (status.connected stays false)",
-  "docs/proposals/s7-bug-ipc-version-check.md",
   async () => {
     const server = new FakePipeServer({ path: testPipePath("bv"), scenario: "highway", faults: { ipcVersion: 2 } });
     servers.push(server);

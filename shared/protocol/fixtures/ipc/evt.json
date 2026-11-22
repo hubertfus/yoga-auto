@@ -1,0 +1,9 @@
+{
+  "t": "evt",
+  "id": "job.delivered",
+  "attrs": {
+    "income": 4200,
+    "distance": 512.4,
+    "cargo": "electronics"
+  }
+}

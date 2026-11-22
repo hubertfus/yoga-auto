@@ -1,0 +1,68 @@
+{
+  "t": "snapshot",
+  "seq": 59,
+  "ts": 1790000000800,
+  "state": {
+    "status": {
+      "source": "pipe",
+      "connected": true,
+      "paused": false,
+      "game": "ets2",
+      "gameVersion": "1.18",
+      "inputActive": true,
+      "inputEnabled": true
+    },
+    "fast": {
+      "speed": 23.61,
+      "rpm": 1180,
+      "gear": 8,
+      "cruise": 0,
+      "throttle": 0.4,
+      "brake": 0,
+      "lights": {
+        "parking": false,
+        "low": true,
+        "high": false,
+        "beacon": false,
+        "auxFront": "off",
+        "auxRoof": "off",
+        "blinkerLeftOn": false,
+        "blinkerRightOn": false,
+        "brake": false,
+        "reverse": false
+      },
+      "hazard": false,
+      "blinker": "off",
+      "parkingBrake": false,
+      "motorBrake": false,
+      "retarder": 0,
+      "engineOn": true,
+      "electricOn": true,
+      "placement": { "x": -9123.4, "y": 52.1, "z": 14022.8, "heading": 0.25 }
+    },
+    "slow": {
+      "fuel": { "amount": 312.5, "rangeKm": 640, "avgConsumption": 0.31, "warning": false },
+      "adblue": { "amount": 18.2, "warning": false },
+      "air": { "pressure": 118, "warning": false, "emergency": false },
+      "temps": { "oil": 92, "water": 88, "brake": 40 },
+      "oilPressure": { "value": 4.2, "warning": false },
+      "waterTempWarning": false,
+      "battery": { "voltage": 24.1, "warning": false },
+      "wear": { "engine": 0.02, "transmission": 0.01, "cabin": 0, "chassis": 0.031, "wheels": 0.05 },
+      "trailers": [
+        { "connected": true, "cargoDamage": 0, "wear": { "chassis": 0.031, "wheels": 0.02, "body": 0.01 } }
+      ],
+      "nav": { "distance": 12450, "time": 610, "speedLimit": 22.2 },
+      "time": { "game": 36000, "restStopMin": 240, "scale": 19 },
+      "odometer": 152340.5,
+      "wipers": false,
+      "diffLock": false,
+      "liftAxle": false,
+      "trailerLiftAxle": false,
+      "trip": { "distance": 12300, "fuelUsed": 14.2, "driveTime": 1180, "instantConsumption": 28.4, "resetAt": 1789990000000 }
+    },
+    "config": { "truck": null, "job": null, "trailers": [] },
+    "alerts": [],
+    "media": null
+  }
+}

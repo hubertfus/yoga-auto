@@ -1,0 +1,12 @@
+{
+  "t": "cfg",
+  "id": "job",
+  "attrs": {
+    "cargo": "electronics",
+    "mass": 12000,
+    "income": 4200,
+    "deliveryTime": 1200,
+    "plannedDistanceKm": 512.4,
+    "cargoLoaded": true
+  }
+}

@@ -1,3 +1,5 @@
+Status: **WDROŻONE** przez lead (2026-11-22)
+
 # S6 → S2: podpięcie SMTC w bridge (`bridge/src/main.ts`)
 
 Dziś bridge włącza media tylko dla mocka (`--mock-media` albo `--source mock`). Na prawdziwej grze (pipe) i na Windows powinien

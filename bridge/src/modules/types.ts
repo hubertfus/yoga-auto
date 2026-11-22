@@ -3,7 +3,7 @@
  * Moduł dostaje BridgeContext przy starcie i może: rozgłaszać wiadomości, obsługiwać wiadomości klientów,
  * rejestrować statyczne zasoby HTTP (np. okładki).
  */
-import type { ClientMsg, ServerMsg } from "@yoga-auto/protocol";
+import type { ClientMsg, MediaState, ServerMsg } from "@yoga-auto/protocol";
 
 export interface StaticHandler {
   /** Zwraca treść albo null (→ 404). `path` = część po prefiksie. */
@@ -24,6 +24,8 @@ export interface BridgeContext {
   registerStatic(prefix: string, handler: StaticHandler): void;
   /** Wywołane przy nowym kliencie po `snapshot` (np. żeby wysłać `media`). */
   onClientConnected(handler: (clientId: string) => void): () => void;
+  /** Ustaw `state.media` w store'rze — trafia do `snapshot`/keyframe'ów (stan mediów żyje w providerze). */
+  setMedia(media: MediaState | null): void;
   log(level: "debug" | "info" | "warn" | "error", msg: string): void;
 }
 

@@ -1,5 +1,7 @@
 # s7-bug-pipe-nonobject-frame — PipeSource przepuszcza nie-obiekty i maskuje wyjątki handlerów (S2)
 
+Status: **WDROŻONE** przez S2 (branch claude/s2-bridge-62ab59, na main od 5d0f0a0).
+
 **Błąd 1:** `PipeSource.onData` robi `this.emit(JSON.parse(body) as IpcFromPlugin)` bez sprawdzenia kształtu. Ramki `null`, `[1,2,3]`, `42`, `{ "foo": 1 }` (bez `t`) trafiają do handlerów jako `SourceMsg`. Handler bridge'a robi `switch (m.t)` → na `null` rzuca.
 
 **Błąd 2:** `emit` jest wewnątrz `try { … } catch { emit(log "bad frame") }`, więc **każdy** wyjątek z handlerów bridge'a (np. `raw.merge(null)` dla `tel` z `ch:null`) jest raportowany jako „bad frame” i połykany. Maskuje to prawdziwe błędy i zostawia stan częściowo zaktualizowany. Dziś to przypadkiem chroni bridge przed crashem (test „does not crash the bridge” przechodzi), ale nie jest zamierzone.

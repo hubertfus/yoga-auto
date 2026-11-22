@@ -12,7 +12,8 @@
     "apps/*",
     "bridge",
     "integrations/*",
-    "tools/*"
+    "tools/*",
+    "e2e"
   ],
   "scripts": {
     "gen": "npm run gen -w @yoga-auto/protocol && npm run gen -w @yoga-auto/design-tokens",
@@ -21,9 +22,15 @@
     "check": "npm run gen && npm run typecheck && npm run test",
     "dev:bridge": "node bridge/src/main.ts --source mock --no-auth",
     "dev:app": "npm run dev -w @yoga-auto/yoga",
-    "dev:mock": "node scripts/dev-mock.ts",
+    "dev:mock": "node bridge/src/main.ts --source mock --no-auth",
     "build:app": "npm run build -w @yoga-auto/yoga",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "dev:replay": "node bridge/src/main.ts --source replay --replay tools/recorder/samples/highway-60s.yarec --loop --no-auth",
+    "yarec": "node tools/recorder/src/cli.ts",
+    "probe": "node tools/fake-pipe/src/probe.ts",
+    "fake-pipe": "node tools/fake-pipe/src/cli.ts",
+    "e2e": "npm run e2e -w @yoga-auto/e2e",
+    "bench": "npm run bench -w @yoga-auto/bench"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

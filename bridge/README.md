@@ -26,7 +26,15 @@ Domyślny port: **7420** (`--port`, `config.json`). PWA serwowane z `apps/yoga/d
 | `--port`, `--host`, `--fast-hz 15\|30\|60` | sieć i częstotliwość `fast` |
 | `--no-auth` | bez tokenu i parowania (tylko dev w LAN) |
 | `--no-mdns` | bez ogłaszania `_yoga-auto._tcp` |
-| `--mock-media` | mock odtwarzacza mediów (domyślnie włączony dla `--source mock`) |
+| `--media auto|mock|null|off` | provider mediów: `auto` = SMTC (Windows) z cichym fallbackiem na `null`; domyślnie `mock` dla `--source mock`, inaczej `auto` |
+| `--prefer-spotify` | przy `auto`: wybierz sesję Spotify, jeśli jest (inaczej bieżąca sesja systemu) |
+| `--mock-media` | alias `--media mock` |
+
+### Media
+
+Moduł `media` (`@yoga-auto/media`) czyta aktualnie grany utwór (SMTC) i obsługuje komendy odtwarzacza oraz okładki (`/media/art/`).
+Stan mediów jest też zapisywany w store'rze (`BridgeContext.setMedia`), więc `snapshot`/keyframe zawiera bieżące `media`, a nie `null`.
+Gdy SMTC nie wstanie, bridge się nie wywraca — UI pokazuje „Nic nie gra". `--media off` wyłącza moduł całkiem.
 
 ### config.json
 

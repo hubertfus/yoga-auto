@@ -11,10 +11,11 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type TelemetrySource } from "@yoga-auto/protocol";
 import { MOCK_SCENARIOS, createMockSource, type MockScenario } from "@yoga-auto/mock";
-import { MockMediaProvider } from "@yoga-auto/media";
+import { createMediaProvider } from "@yoga-auto/media";
 import { loadConfig, resolveSettings } from "./config.ts";
 import { DeviceStore } from "./devices.ts";
 import { runDevicesCli } from "./devices-cli.ts";
+import { resolveMediaMode } from "./modules/media-mode.ts";
 import { advertise } from "./mdns.ts";
 import { dataDir } from "./paths.ts";
 import { createMediaModule } from "./modules/media.ts";
@@ -38,6 +39,8 @@ const { values, positionals } = parseArgs({
     "no-auth": { type: "boolean", default: false },
     "no-mdns": { type: "boolean", default: false },
     "mock-media": { type: "boolean", default: false },
+    media: { type: "string" },
+    "prefer-spotify": { type: "boolean", default: false },
     static: { type: "string" },
     record: { type: "string" },
     replay: { type: "string" },
@@ -70,8 +73,19 @@ if (settings.source === "mock") {
 const recorder = values.record ? await loadRecorder(values.record, { source: settings.source }) : undefined;
 
 const staticDir = values.static ?? resolve(import.meta.dirname, "../../apps/yoga/dist");
+const mediaMode = resolveMediaMode(values, settings.source);
 const modules =
-  values["mock-media"] || settings.source === "mock" ? [createMediaModule(new MockMediaProvider())] : [];
+  mediaMode === "off"
+    ? []
+    : [
+        createMediaModule(
+          createMediaProvider({
+            ...(mediaMode === "auto" ? {} : { force: mediaMode }),
+            preferSpotify: values["prefer-spotify"],
+            log: (l, m) => console.log(`[${l}] ${m}`),
+          }),
+        ),
+      ];
 
 const bridge = await startBridge({
   source,

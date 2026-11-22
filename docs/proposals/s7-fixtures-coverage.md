@@ -1,3 +1,5 @@
+Status: **WDROŻONE** przez lead (2026-11-22)
+
 # Propozycja S7 → lead: braki w fixture'ach `shared/protocol/fixtures`
 
 Testy kontraktu (`tests/contract/fixtures.test.ts`) walidują tylko to, co jest w katalogu fixture'ów. Brakuje

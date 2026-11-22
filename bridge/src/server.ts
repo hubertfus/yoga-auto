@@ -484,6 +484,9 @@ export async function startBridge(opts: BridgeOptions) {
       set.add(h);
       return () => set.delete(h);
     },
+    setMedia: (media) => {
+      store.state.media = media;
+    },
     registerStatic: (prefix, handler) => statics.set(prefix, handler),
     onClientConnected: (h) => {
       connectHandlers.add(h);

@@ -1,0 +1,15 @@
+{
+  "name": "@yoga-auto/map-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "S8: generacja kafli mapy (map:build, zewnetrzne narzedzie truckermudgeon/maps) i zaleznosci mapy dla aplikacji (maplibre-gl, pmtiles).",
+  "scripts": {
+    "map:build": "node src/build.ts",
+    "map:calibrate": "node src/calibrate.ts"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.0.0",
+    "pmtiles": "^4.0.0"
+  }
+}

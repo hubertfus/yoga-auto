@@ -1,0 +1,18 @@
+{
+  "name": "@yoga-auto/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Testy e2e Playwright na mocku (bridge + Vite). Właściciel: S7.",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@yoga-auto/protocol": "*",
+    "@yoga-auto/mock": "*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}

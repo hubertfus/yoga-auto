@@ -12,6 +12,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import {
   DEFAULT_FAST_HZ,
   DEFAULT_SLOW_HZ,
+  IPC_VERSION,
   KEYFRAME_INTERVAL_MS,
   PLACEMENT_MAX_HZ,
   PROTOCOL_MINOR,
@@ -24,6 +25,7 @@ import {
   type TelemetrySource,
 } from "@yoga-auto/protocol";
 import { hostAllowed, isPrivateAddress, originAllowed, type OriginPolicy } from "./access.ts";
+import { isClientFrame } from "./guards.ts";
 import { AlertEngine, type AlertThresholds } from "./alerts.ts";
 import { CommandRouter } from "./commands.ts";
 import type { DeviceStore } from "./devices.ts";
@@ -37,6 +39,20 @@ import { LatencyStats } from "./metrics.ts";
 import { StateStore } from "./store.ts";
 import { ClientStream } from "./throttle.ts";
 import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
+
+/**
+ * Hook nagrywania sesji (implementacja: `YarecRecorder` z tools/recorder, S7). Strukturalny, żeby
+ * bridge nie zależał od pakietu rekordera.
+ */
+export interface Recorder {
+  readonly file: string;
+  /** wiadomość źródła (także connected/disconnected) */
+  ipc(msg: SourceMsg): void;
+  /** wiadomość bridge → UI (`clientId` gdy wysłana do jednego klienta) */
+  ws(msg: ServerMsg, clientId?: string): void;
+  flush(): void;
+  close(): Promise<void>;
+}
 
 export interface BridgeOptions {
   source: TelemetrySource;
@@ -64,6 +80,8 @@ export interface BridgeOptions {
   /** katalog z `*.pmtiles` (M4) */
   tilesDir?: string;
   modules?: BridgeModule[];
+  /** nagrywanie sesji do .yarec (`--record`) */
+  recorder?: Recorder;
   version?: string;
   log?: (level: "debug" | "info" | "warn" | "error", msg: string) => void;
 }
@@ -103,6 +121,8 @@ export async function startBridge(opts: BridgeOptions) {
   const msgHandlers = new Map<string, Set<(msg: ClientMsg, id: string) => void | Promise<void>>>();
   const connectHandlers = new Set<(id: string) => void>();
   const modules = opts.modules ?? [];
+  /** plugin z inną wersją IPC: ignoruj tel/cfg/evt do ponownego `hello` */
+  let ipcMismatch = false;
   let frame = 0;
   let telDirty = false;
   /** performance.now() ostatniej ramki `tel` (latencja pipe → WS) */
@@ -122,12 +142,23 @@ export async function startBridge(opts: BridgeOptions) {
   const alertEngine = new AlertEngine(opts.alertThresholds);
   store.setSlow("trip", trip.state);
 
+  /** błąd rekordera (dysk pełny itp.) nie może zatrzymać bridge'a */
+  const safeRecord = (fn: () => void) => {
+    try {
+      fn();
+    } catch (e) {
+      log("error", `recorder: ${String(e)}`);
+    }
+  };
   const isOpen = (c: Client) => c.ws.readyState === c.ws.OPEN;
   const send = (c: Client, msg: ServerMsg) => {
-    if (isOpen(c)) c.ws.send(JSON.stringify(msg));
+    if (!isOpen(c)) return;
+    c.ws.send(JSON.stringify(msg));
+    safeRecord(() => opts.recorder?.ws(msg, c.id));
   };
   const broadcast = (msg: ServerMsg) => {
     const s = JSON.stringify(msg);
+    safeRecord(() => opts.recorder?.ws(msg)); // raz, nie per klient
     for (const c of clients.values()) if (isOpen(c)) c.ws.send(s);
   };
   /** Wiadomości z `seq` (fast/slow/config/status) — numerowane per klient. */
@@ -140,21 +171,32 @@ export async function startBridge(opts: BridgeOptions) {
     send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
   };
 
-  const capabilities = { input: true, media: modules.some((m) => m.capability === "media"), map: false, record: false };
+  const capabilities = { input: true, media: modules.some((m) => m.capability === "media"), map: false, record: !!opts.recorder };
 
   // ─── źródło telemetrii ───
   opts.source.onMessage((m: SourceMsg) => {
+    safeRecord(() => opts.recorder?.ipc(m));
+    if (ipcMismatch && (m.t === "tel" || m.t === "cfg" || m.t === "evt")) return;
     switch (m.t) {
       case "connected":
         log("info", `source ${opts.source.kind} connected`);
         break;
       case "disconnected":
+        ipcMismatch = false;
         store.setStatus({ connected: false, inputActive: false });
         router.onSourceDisconnected();
         router.setInputs(null);
         log("warn", `source disconnected${m.reason ? `: ${m.reason}` : ""}`);
         break;
       case "hello":
+        if (m.ipc !== IPC_VERSION) {
+          ipcMismatch = true;
+          router.setInputs(null);
+          store.setStatus({ connected: false, inputActive: false });
+          log("error", `plugin speaks IPC v${m.ipc}, bridge expects v${IPC_VERSION}: refusing (update plugin/bridge)`);
+          break;
+        }
+        ipcMismatch = false;
         router.setInputs(m.inputs);
         store.setStatus({
           connected: true,
@@ -358,13 +400,18 @@ export async function startBridge(opts: BridgeOptions) {
     });
     snapshot(c);
     connectHandlers.forEach((h) => h(c.id));
-    ws.on("message", async (data) => {
-      let msg: ClientMsg;
+    ws.on("message", (data) => {
+      let parsed: unknown;
       try {
-        msg = JSON.parse(String(data)) as ClientMsg;
+        parsed = JSON.parse(String(data));
       } catch {
         return;
       }
+      // `null`, tablice, liczby, obiekty bez `t` — ignoruj (nie ubijaj procesu)
+      if (!isClientFrame(parsed)) return;
+      handleClientMsg(parsed as ClientMsg).catch((e) => log("error", `client ${c.id} msg ${parsed.t}: ${String(e)}`));
+    });
+    const handleClientMsg = async (msg: ClientMsg) => {
       switch (msg.t) {
         case "ping":
           send(c, { t: "pong", t0: msg.t0, ts: Date.now() });
@@ -400,8 +447,14 @@ export async function startBridge(opts: BridgeOptions) {
         default:
           break;
       }
-      msgHandlers.get(msg.t)?.forEach((h) => h(msg, c.id));
-    });
+      for (const h of msgHandlers.get(msg.t) ?? []) {
+        try {
+          await h(msg, c.id);
+        } catch (e) {
+          log("error", `module handler ${msg.t}: ${String(e)}`);
+        }
+      }
+    };
     ws.on("close", () => {
       clients.delete(c.id);
       rate.forget(c.id);
@@ -458,12 +511,14 @@ export async function startBridge(opts: BridgeOptions) {
       clearInterval(keyframeTimer);
       clearInterval(rulesTimer);
       trip.flush();
+      safeRecord(() => opts.recorder?.flush());
       clearInterval(metricsTimer);
       if (devicesTimer) clearInterval(devicesTimer);
       devices?.close();
       for (const c of clients.values()) c.ws.close(WsCloseCode.ServerShutdown, "shutdown");
       await Promise.all(modules.map((m) => m.stop().catch(() => {})));
       await opts.source.stop();
+      await opts.recorder?.close().catch((e) => log("error", `recorder close: ${String(e)}`));
       wss.close();
       await new Promise<void>((r) => http.close(() => r()));
     },

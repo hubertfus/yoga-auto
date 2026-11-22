@@ -15,11 +15,13 @@ import { store, useFastValue } from "../../core/store.ts";
 import {
   DEFAULT_PROJECTION,
   gameToLonLat,
+  lonLatToGame,
   haversineM,
   headingToBearing,
   type ProjectionConfig,
 } from "./projection.ts";
 import { normalizeBearing, springStep, unwrapAngle, type Spring1D } from "./spring.ts";
+import { attachImageLoader } from "./icons.ts";
 import { buildStyle, readMapColors, type MapColors } from "./style.ts";
 import { createTierDrop } from "./tierDrop.ts";
 import { pmtilesProtocol, probeTiles, type TileProbe } from "./tiles.ts";
@@ -55,6 +57,8 @@ export interface MapViewProps {
   /** wywoływane przy zmianie trybu follow (gest przeciągnięcia wyłącza follow) */
   onFollowChange?: (follow: boolean) => void;
   onHeadingUpChange?: (v: boolean) => void;
+  /** przytrzymanie palca w miejscu (wybór celu): punkt w metrach gry + pozycja na ekranie względem mapy */
+  onLongPress?: (p: { x: number; z: number; left: number; top: number }) => void;
   /** uchwyt do przycisków zewnętrznych */
   controlsRef?: { current: MapControls | null };
   className?: string;
@@ -79,6 +83,8 @@ export function routeGeoJson(route: RouteInfo | null, cfg: ProjectionConfig): Ge
 
 function addRouteLayers(map: MlMap, colors: MapColors): void {
   if (map.getSource("route")) return;
+  // trasa pod symbolami (nazwy miast, ikony POI), nad drogami
+  const before = map.getStyle().layers.find((l) => l.id.startsWith("sym-"))?.id;
   map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   const w = (base: number) => ["interpolate", ["exponential", 1.5], ["zoom"], 5, base * 0.5, 10, base * 1.2, 14, base * 2.6, 18, base * 6];
   map.addLayer({
@@ -88,7 +94,7 @@ function addRouteLayers(map: MlMap, colors: MapColors): void {
     filter: ["==", ["get", "kind"], "line"],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": colors.bg, "line-opacity": 0.85, "line-width": w(4.2) as never },
-  });
+  }, before);
   map.addLayer({
     id: "route-line",
     type: "line",
@@ -96,7 +102,7 @@ function addRouteLayers(map: MlMap, colors: MapColors): void {
     filter: ["==", ["get", "kind"], "line"],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": colors.accent, "line-width": w(2.6) as never },
-  });
+  }, before);
   map.addLayer({
     id: "route-dest",
     type: "circle",
@@ -112,6 +118,7 @@ function addRouteLayers(map: MlMap, colors: MapColors): void {
 }
 
 const SPRING = springs.smooth;
+const LONG_PRESS_MS = 600;
 const SNAP_M = 400; // skok większy niż to (teleport/zmiana sesji) = bez animacji
 const END_DELAY_MS = 350;
 
@@ -122,6 +129,7 @@ export function MapView({
   onHeadingUpChange,
   controlsRef,
   className,
+  onLongPress,
 }: MapViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const [probe, setProbe] = useState<TileProbe | null>(null);
@@ -130,8 +138,8 @@ export function MapView({
   const target = useRef<{ lon: number; lat: number; bearing: number } | null>(null);
   const follow = useRef(true);
   const headingUp = useRef(false);
-  const cb = useRef({ onFollowChange, onHeadingUpChange });
-  cb.current = { onFollowChange, onHeadingUpChange };
+  const cb = useRef({ onFollowChange, onHeadingUpChange, onLongPress });
+  cb.current = { onFollowChange, onHeadingUpChange, onLongPress };
   const snapNext = useRef(true);
 
   usePlacementSubscription();
@@ -176,8 +184,39 @@ export function MapView({
     let unsubRoute = () => {};
     // dopóki palec/mysz jest na mapie, nie ruszamy kamery (jumpTo przerywa gest przeciągania/pinch)
     const pointers = new Set<number>();
-    const down = (e: PointerEvent) => void pointers.add(e.pointerId);
-    const up = (e: PointerEvent) => void pointers.delete(e.pointerId);
+    // przytrzymanie jednym palcem bez ruchu → onLongPress (wybór celu na mapie)
+    let pressTimer: ReturnType<typeof setTimeout> | undefined;
+    let pressAt: { x: number; y: number } | null = null;
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+      pressAt = null;
+    };
+    const down = (e: PointerEvent) => {
+      pointers.add(e.pointerId);
+      cancelPress();
+      if (!interactive || pointers.size !== 1 || e.button > 0) return;
+      pressAt = { x: e.clientX, y: e.clientY };
+      pressTimer = setTimeout(() => {
+        const at = pressAt;
+        pressAt = null;
+        if (!at || !map || !cb.current.onLongPress) return;
+        const rect = el.getBoundingClientRect();
+        const left = at.x - rect.left;
+        const top = at.y - rect.top;
+        const ll = map.unproject([left, top]);
+        const g = lonLatToGame(ll.lng, ll.lat, projRef.current);
+        navigator.vibrate?.(15);
+        cb.current.onLongPress({ x: g.x, z: g.z, left, top });
+      }, LONG_PRESS_MS);
+    };
+    const movePress = (e: PointerEvent) => {
+      if (pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 10) cancelPress();
+    };
+    const up = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      cancelPress();
+    };
+    el.addEventListener("pointermove", movePress);
     el.addEventListener("pointerdown", down);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
@@ -217,6 +256,7 @@ export function MapView({
         fadeDuration: 0,
       });
       map.touchZoomRotate.disableRotation();
+      attachImageLoader(map, colors);
       (window as unknown as { __map?: MlMap }).__map = map;
 
       // trasa GPS (z bridge'a, wiadomość `route`)
@@ -310,6 +350,8 @@ export function MapView({
       unsubRoute();
       cancelAnimationFrame(raf);
       clearTimeout(endTimer);
+      cancelPress();
+      el.removeEventListener("pointermove", movePress);
       el.removeEventListener("pointerdown", down);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);

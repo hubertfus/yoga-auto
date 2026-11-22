@@ -5,7 +5,7 @@ import { registerScreen, registerWidget } from "../../core/registry.ts";
 import { useConfig, useSlow } from "../../core/store.ts";
 import { Bar, CardTitle, Stat } from "../_shared/shared.tsx";
 import { LimitSign } from "../gauges/index.tsx";
-import { MANEUVER_TEXT, ManeuverIcon, ManeuverList, NextManeuver, formatManeuverDistance, useRouteProgress } from "../route/index.tsx";
+import { MANEUVER_TEXT, ManeuverIcon, ManeuverList, NextManeuver, RouteTargetBar, formatManeuverDistance, useRouteProgress } from "../route/index.tsx";
 import {
   formatArrival,
   formatDistance,
@@ -170,6 +170,7 @@ function NavScreen() {
         style={{ width: 440, flex: "none", display: "flex", flexDirection: "column", gap: "var(--s-4)", minHeight: 0 }}
       >
         <CardTitle icon={<Icon name="navigation" size={20} />}>Nawigacja</CardTitle>
+        <RouteTargetBar />
         <NextManeuver />
         <div className="ft-grow" style={{ minHeight: 0, overflow: "auto", overscrollBehavior: "contain" }}>
           <ManeuverList count={6} />

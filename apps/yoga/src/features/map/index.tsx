@@ -2,8 +2,8 @@
 import { useRef, useState, type ComponentType } from "react";
 import { GlassButton, Icon } from "@yoga-auto/glass-ui";
 import { getScreen, registerScreen, registerWidget } from "../../core/registry.ts";
-import { useRoute } from "../../core/store.ts";
-import { NextManeuver } from "../route/index.tsx";
+import { useConnectionSelect, useRoute } from "../../core/store.ts";
+import { DestinationSheet, NextManeuver, RouteTargetBar, labelForPoint, loadPlaces, sendRouteTarget } from "../route/index.tsx";
 import { MapView, type MapControls } from "./MapView.tsx";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./map.css";
@@ -12,11 +12,55 @@ function MapScreen() {
   const controls = useRef<MapControls | null>(null);
   const [follow, setFollow] = useState(true);
   const [headingUp, setHeadingUp] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pick, setPick] = useState<{ x: number; z: number; left: number; top: number; label: string } | null>(null);
+  const canRoute = useConnectionSelect((c) => c.hello?.capabilities.route ?? false);
+  const route = useRoute();
+  const onLongPress = (p: { x: number; z: number; left: number; top: number }) => {
+    if (!canRoute) return;
+    setPick({ ...p, label: "Punkt na mapie" });
+    void loadPlaces().then((places) =>
+      setPick((cur) => (cur && cur.x === p.x && cur.z === p.z ? { ...cur, label: labelForPoint(places, p.x, p.z) } : cur)),
+    );
+  };
   return (
     <div className="map-screen" data-testid="map-screen">
-      <MapView controlsRef={controls} onFollowChange={setFollow} onHeadingUpChange={setHeadingUp} />
+      <MapView controlsRef={controls} onFollowChange={setFollow} onHeadingUpChange={setHeadingUp} onLongPress={onLongPress} />
       <RouteOverlay />
+      {pick ? (
+        <div className="map-pick" style={{ left: pick.left, top: pick.top }} data-testid="map-pick">
+          <div className="map-pick__label">{pick.label}</div>
+          <div className="map-pick__actions">
+            <GlassButton size="md" label="Anuluj" onPress={() => setPick(null)} />
+            <GlassButton
+              size="md"
+              variant="filled"
+              icon={<Icon name="navigation" />}
+              label="Nawiguj tutaj"
+              onPress={() => {
+                sendRouteTarget({ x: pick.x, z: pick.z, label: pick.label });
+                setPick(null);
+              }}
+              data-testid="map-pick-go"
+            />
+          </div>
+        </div>
+      ) : null}
+      <DestinationSheet open={searchOpen} onClose={() => setSearchOpen(false)} />
       <div className="map-controls">
+        {canRoute ? (
+          <GlassButton size="lg" icon={<Icon name="search" />} aria-label="Wybierz cel" onPress={() => setSearchOpen(true)} data-testid="map-search" />
+        ) : null}
+        {route?.manual ? (
+          <GlassButton
+            size="lg"
+            icon={<Icon name="close" />}
+            aria-label="Zakończ nawigację"
+            tone="crit"
+            onPress={() => void sendRouteTarget(null)}
+            data-testid="map-route-clear"
+          />
+        ) : null}
         <GlassButton
           size="lg"
           icon={<Icon name="plus" />}
@@ -59,6 +103,7 @@ function RouteOverlay({ compact = false }: { compact?: boolean }) {
   if (!route) return null;
   return (
     <div className="map-route-overlay" data-compact={compact || undefined}>
+      {compact ? null : <RouteTargetBar />}
       <NextManeuver compact={compact} />
     </div>
   );

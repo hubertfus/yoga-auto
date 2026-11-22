@@ -32,8 +32,10 @@ export interface Maneuver {
 export interface RouteInfo {
   /** zmienia się przy każdym przeliczeniu */
   id: string;
-  /** cel trasy (firma docelowa zlecenia) */
+  /** cel trasy: firma docelowa zlecenia albo (gdy `manual`) punkt wybrany na tablecie — wtedy `city` = jego nazwa */
   to: { city: string; company: string };
+  /** cel wybrany ręcznie na tablecie (`route.set`), nie ze zlecenia */
+  manual?: boolean;
   /** polilinia w metrach świata gry: [x0, z0, x1, z1, …] */
   points: number[];
   /**
@@ -55,6 +57,23 @@ export interface RouteMsg {
   ts: number;
   /** null = brak trasy (brak zlecenia / brak grafu / cel nieosiągalny) */
   route: RouteInfo | null;
+}
+
+/** Cel wybrany na tablecie: punkt w metrach świata gry + nazwa do wyświetlenia. */
+export interface RouteTarget {
+  x: number;
+  z: number;
+  label: string;
+}
+
+/**
+ * UI → bridge: ustaw (albo `target: null` — wyczyść) ręczny cel trasy. Gra nie udostępnia celu z jej GPS,
+ * więc bez zlecenia cel wybiera się na tablecie. Odpowiedź: `ack` (ok:false + invalid_value przy złych danych).
+ */
+export interface RouteSetMsg {
+  t: "route.set";
+  id: string;
+  target: RouteTarget | null;
 }
 
 // ─── geometria (wspólna dla bridge i UI) ───

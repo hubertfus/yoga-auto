@@ -4,6 +4,7 @@
  * więc nie zakładamy nazw warstw generatora (README projektu ich nie podaje).
  */
 import type { StyleSpecification, LayerSpecification } from "maplibre-gl";
+import { symbolLayers } from "./icons.ts";
 
 export interface MapColors {
   /** tło mapy */
@@ -15,6 +16,10 @@ export interface MapColors {
   roadMajor: string;
   rail: string;
   accent: string;
+  /** nazwy miast */
+  label: string;
+  /** nazwy krajów */
+  labelDim: string;
 }
 
 /** Zapasowe kolory (SSR/testy/brak DOM) — zbliżone do tokenów dark. */
@@ -26,6 +31,8 @@ export const FALLBACK_COLORS: MapColors = {
   roadMajor: "rgb(150,156,172)",
   rail: "rgb(60,64,76)",
   accent: "rgb(86,140,255)",
+  label: "rgb(236,238,244)",
+  labelDim: "rgb(150,156,172)",
 };
 
 export interface TileSource {
@@ -87,6 +94,8 @@ export function buildStyle(colors: MapColors, tiles: TileSource | null): StyleSp
       });
     }
   }
+  // punkty (miasta, POI, numery dróg) na wierzchu; obrazki ładuje `attachImageLoader` (icons.ts)
+  if (tiles) for (const id of tiles.layers) layers.push(...symbolLayers(id));
   return { version: 8, sources, layers };
 }
 
@@ -125,5 +134,7 @@ export function readMapColors(): MapColors {
     roadMajor: mix("--text-2", FALLBACK_COLORS.roadMajor, 90),
     rail: mix("--text-3", FALLBACK_COLORS.rail, 45),
     accent: pick("--accent", FALLBACK_COLORS.accent),
+    label: pick("--text-1", FALLBACK_COLORS.label),
+    labelDim: pick("--text-3", FALLBACK_COLORS.labelDim),
   };
 }

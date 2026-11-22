@@ -1,0 +1,5 @@
+{
+  "t": "route.set",
+  "id": "rt1",
+  "target": { "x": 9906, "z": -9929, "label": "Berlin" }
+}

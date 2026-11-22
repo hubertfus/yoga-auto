@@ -14,6 +14,15 @@
   --crit: oklch(65% 0.23 25);
   --rim-top: rgb(255 255 255 / 0.45);
   --rim-bottom: rgb(255 255 255 / 0.08);
+  --glass-alpha: 62%;
+  --glass-alpha-strong: 82%;
+  --glass-alpha-clear: 34%;
+  --glass-bright: 0.78;
+  --glass-flat: oklch(25% 0.02 260);
+  --glass-flat-strong: oklch(20% 0.02 260);
+  --specular: rgb(255 255 255 / 0.20);
+  --text-halo: 0 1px 2px rgb(0 0 0 / 0.5);
+  --scrim: rgb(0 0 0 / 0.45);
   --r-xs: 10px;
   --r-sm: 16px;
   --r-md: 22px;
@@ -44,6 +53,14 @@
   --z-sheet: 30;
   --z-toast: 40;
   --z-overlay: 50;
+  --ease-snappy: linear(0, 0.036, 0.119, 0.219, 0.328, 0.439, 0.553, 0.648, 0.732, 0.803, 0.867, 0.914, 0.951, 0.978, 1, 1.013, 1.021, 1.026, 1.028, 1.027, 1.026, 1.023, 1.02, 1.017, 1.014, 1.011, 1.008, 1.006, 1.004, 1.003, 1.002, 1.001, 1);
+  --dur-snappy: 361ms;
+  --ease-smooth: linear(0, 0.021, 0.061, 0.122, 0.186, 0.261, 0.338, 0.407, 0.48, 0.542, 0.606, 0.664, 0.711, 0.757, 0.795, 0.831, 0.862, 0.886, 0.909, 0.926, 0.943, 0.955, 0.966, 0.975, 0.982, 0.988, 0.992, 0.995, 0.998, 1, 1.001, 1.002, 1);
+  --dur-smooth: 340ms;
+  --ease-gentle: linear(0, 0.028, 0.088, 0.17, 0.256, 0.342, 0.425, 0.501, 0.575, 0.637, 0.692, 0.74, 0.781, 0.816, 0.848, 0.873, 0.894, 0.912, 0.927, 0.941, 0.951, 0.96, 0.967, 0.973, 0.978, 0.982, 0.985, 0.988, 0.99, 0.992, 0.993, 0.995, 1);
+  --dur-gentle: 450ms;
+  --ease-gauge: linear(0, 0.029, 0.093, 0.174, 0.263, 0.351, 0.435, 0.512, 0.582, 0.644, 0.698, 0.745, 0.785, 0.82, 0.849, 0.874, 0.896, 0.913, 0.928, 0.94, 0.951, 0.959, 0.966, 0.972, 0.977, 0.981, 0.984, 0.987, 0.989, 0.991, 0.993, 0.994, 1);
+  --dur-gauge: 450ms;
   --font-family: "Inter Variable", Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --t-display: 700 96px/1 var(--font-family);
   --t-h1: 650 48px/1.1 var(--font-family);
@@ -56,6 +73,7 @@
   --glass-sat: 180%;
   --refract-scale: 28;
   --max-surfaces: 6;
+  color-scheme: dark;
 }
 :root[data-theme="light"] {
   --bg-0: oklch(94% 0.01 260);
@@ -72,10 +90,34 @@
   --crit: oklch(56% 0.22 25);
   --rim-top: rgb(255 255 255 / 0.85);
   --rim-bottom: rgb(0 0 0 / 0.08);
+  --glass-alpha: 58%;
+  --glass-alpha-strong: 80%;
+  --glass-alpha-clear: 32%;
+  --glass-bright: 1.04;
+  --glass-flat: oklch(96% 0.005 260);
+  --glass-flat-strong: oklch(94% 0.01 260);
+  --specular: rgb(255 255 255 / 0.65);
+  --text-halo: 0 1px 1px rgb(255 255 255 / 0.45);
+  --scrim: rgb(0 0 0 / 0.25);
+  color-scheme: light;
 }
 :root[data-night="true"] {
-  --accent: oklch(74% 0.14 60);
+  --text-1: oklch(73.5% 0 0);
+  --text-2: oklch(60% 0.01 260);
+  --text-3: oklch(46.5% 0.01 260);
+  --on: oklch(60% 0.19 150);
+  --lights: oklch(66% 0.16 95);
+  --beam-high: oklch(56.3% 0.15 250);
+  --warn: oklch(60% 0.17 75);
+  --crit: oklch(48.8% 0.23 25);
+  --accent: oklch(62.9% 0.14 60);
+  --glass-tint: oklch(22.5% 0.02 260);
+  --glass-tint-strong: oklch(16.5% 0.02 260);
+  --bg-0: oklch(10.5% 0.01 260);
   --dim: 0.75;
+  --glass-bright: 0.66;
+  --specular: rgb(255 230 200 / 0.12);
+  color-scheme: dark;
 }
 :root[data-tier="ultra"] {
   --glass-blur: 24px;

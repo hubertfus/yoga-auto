@@ -18,3 +18,18 @@ Agent edytuje **tylko** katalogi swojego strumienia. Potrzebna zmiana gdzie indz
 | `tools/map/**`, `apps/yoga/src/features/map/**` | S8 |
 
 Nowa zależność npm: dopisz ją w `package.json` **swojego** pakietu (`npm install <pkg> -w <workspace>`). Konflikt w `package-lock.json` rozwiązuje lead.
+
+## Porty i zasoby lokalne (sesje działają równolegle na jednym PC)
+
+| Kto | Bridge | Vite / Ladle | Pipe |
+|---|---|---|---|
+| główny folder (lead, Twoje testy) | 7420 | 5173 | — |
+| S1 | 7427 | — | `\.\pipe\yoga-auto` (plugin gry); testy: unikalna nazwa |
+| S2 | 7421 (testy: `port: 0`) | — | — |
+| S3 | 7426 | Ladle 61003 | — |
+| S4 | 7422 | 5174 | — |
+| S5 | 7428 | 5176 | — |
+| S6 | 7429 | 5177 | — |
+| S7 | 7423–7425 (testy: `port: 0`) | 5175 | `\.\pipe\yoga-auto-s7-<pid>` |
+
+Nie zabijaj procesów, których sam nie uruchomiłeś.

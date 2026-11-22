@@ -7,6 +7,7 @@
   "scripts": {
     "map:build": "node src/build.ts",
     "map:calibrate": "node src/calibrate.ts",
-    "map:graph": "node --max-old-space-size=8192 src/graph.ts"
+    "map:graph": "node --max-old-space-size=8192 src/graph.ts",
+    "map:lanes": "node --max-old-space-size=8192 src/lanes.ts"
   }
 }

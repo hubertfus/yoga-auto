@@ -59,5 +59,16 @@ Cel trasy: firma docelowa zlecenia albo cel wybrany na tablecie (wyszukiwarka �
 
 Bridge wczytuje `route-graph.bin` z katalogu kafli przy starcie (log: „trasa GPS: graf … węzłów”). Bez pliku trasa jest wyłączona, a tablet pokazuje „brak grafu dróg”. Po aktualizacji gry/DLC wygeneruj graf ponownie (nowe drogi i firmy).
 
+## Jezdnie z pasami — `roads.pmtiles`
+Kafle truckermudgeon mają tylko linię środka drogi, więc na zbliżeniu drogi są cienkie i nie widać, którym pasem jedzie ciężarówka. `npm run map:lanes` buduje z danych parsera (drogi, węzły, `roadLooks`) osobne kafle `roads.pmtiles` (warstwa `lanes`, ~40 MB): każdy odcinek z liczbą pasów w każdą stronę, szerokością pasa i pasem rozdzielającym. Mapa rysuje z nich od zoomu ~11,5 jezdnie w prawdziwej skali, oś drogi i przerywane linie między pasami (przejazdy przez prefaby — węzły, mosty — zostają z kafli bazowych jako podkład).
+
+Wymaga `projection.json` (kalibracja) i `tippecanoe` — w PATH albo w obrazie Dockera:
+
+```powershell
+npm run map:lanes -- --docker yoga-map-builder:latest
+```
+
+Bez `roads.pmtiles` mapa działa jak wcześniej (drogi z kafli bazowych, szerokość wg typu drogi).
+
 ## Uruchomienie aplikacji
 Mapa działa na mocku/replayu (`npm run dev:mock`, `npm run dev:replay`) — marker porusza się po pustym tle bez kafli; z kaflami i `projection.json` pokazuje drogi.

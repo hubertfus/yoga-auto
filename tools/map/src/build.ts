@@ -112,6 +112,10 @@ async function main(): Promise<void> {
   // graf dróg do trasy GPS (bridge): generator graph → tools/map/.cache/graph, potem konwersja do route-graph.bin
   run("npx", ["generator", "graph", "-m", "europe", "-i", parsed, "-o", join(cache, "graph")], repoDir, args.dryRun);
   run("node", ["--max-old-space-size=8192", join(here, "graph.ts"), "--cache", cache, "--out", join(args.out, "route-graph.bin")], root, args.dryRun);
+  // jezdnie z pasami (roads.pmtiles) — wymaga projection.json (map:calibrate); bez niego krok pomijamy
+  if (existsSync(join(args.out, "projection.json")))
+    run("node", ["--max-old-space-size=8192", join(here, "lanes.ts"), "--cache", cache, "--out", args.out], root, args.dryRun);
+  else console.log("(pomijam map:lanes: brak projection.json — uruchom po map:calibrate)");
 
   if (args.dryRun) {
     console.log("\n(dry-run: nic nie pobrano ani nie uruchomiono)");

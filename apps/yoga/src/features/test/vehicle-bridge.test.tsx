@@ -79,7 +79,8 @@ describe("panel pojazdu ↔ mock bridge", () => {
       expect(ackFor(c[0]!.id)!.ok).toBe(true);
     }
     if (id === "ui.pause") {
-      // pauza w mocku blokuje pozostałe komendy (game_paused) — wznów
+      // pauza w mocku blokuje pozostałe komendy (game_paused) — poczekaj aż dojdzie status, potem wznów
+      await vi.waitFor(() => expect(store.state.status.paused).toBe(true), { timeout: 3000 });
       cleanup();
       render(<ActionButton id="ui.pause" />);
       fireEvent.click(screen.getByRole("button"));

@@ -163,7 +163,8 @@ export function createHttpHandler(deps: HttpDeps) {
         res.writeHead(400).end();
         return;
       }
-      if (!/^[\w.-]+\.(pmtiles|json)$/.test(name) || name.includes("..")) {
+      // kafle, projection.json, route-places.json oraz ikony POI mapy (icons/<sprite>.png)
+      if (!/^(icons\/)?[\w.-]+\.(pmtiles|json|png)$/.test(name) || name.includes("..")) {
         res.writeHead(404).end();
         return;
       }

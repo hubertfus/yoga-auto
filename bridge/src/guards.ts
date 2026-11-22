@@ -38,3 +38,18 @@ export function isIpcFromPlugin(v: unknown): boolean {
 export function isClientFrame(v: unknown): v is { t: string } {
   return isObj(v) && typeof v["t"] === "string";
 }
+
+/** Cel trasy z `route.set`: skończone współrzędne w zasięgu mapy i krótka nazwa. */
+export function isRouteTarget(v: unknown): v is { x: number; z: number; label: string } {
+  if (!isObj(v)) return false;
+  const { x, z, label } = v;
+  return (
+    typeof x === "number" &&
+    typeof z === "number" &&
+    Number.isFinite(x) &&
+    Number.isFinite(z) &&
+    Math.abs(x) < 1e6 &&
+    Math.abs(z) < 1e6 &&
+    typeof label === "string"
+  );
+}

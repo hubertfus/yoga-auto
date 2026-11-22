@@ -6,7 +6,7 @@ import type { ActionId } from "./actions.ts";
 import type { Alert } from "./alerts.ts";
 import type { GameEvent } from "./events.ts";
 import type { MediaAction, MediaState } from "./media.ts";
-import type { RouteMsg } from "./route.ts";
+import type { RouteMsg, RouteSetMsg } from "./route.ts";
 import type { ConfigState, Delta, FastState, FullState, GameStatus, SlowState } from "./state.ts";
 
 // ═══════════════════════════════ bridge → UI ═══════════════════════════════
@@ -185,7 +185,7 @@ export interface TripResetMsg {
   id: string;
 }
 
-export type ClientMsg = CmdMsg | MediaCmdMsg | SubscribeMsg | ResyncMsg | PingMsg | TripResetMsg;
+export type ClientMsg = CmdMsg | MediaCmdMsg | SubscribeMsg | ResyncMsg | PingMsg | TripResetMsg | RouteSetMsg;
 
 // ═══════════════════════════════ stałe ═══════════════════════════════
 

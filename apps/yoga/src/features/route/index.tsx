@@ -2,8 +2,10 @@
  * Trasa GPS: panel najbliższego manewru i lista kolejnych („za 300 m skręć w prawo”, „prosto przez 200 km”, …).
  * Trasę liczy bridge (bridge/src/route); tu tylko postęp i prezentacja. Używane przez ekran `nav`, mapę i widget Home.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { GlassButton, Icon } from "@yoga-auto/glass-ui";
 import { useConfig, useConnectionSelect } from "../../core/store.ts";
+import { DestinationSheet } from "./destination.tsx";
 import { useUnits } from "../units/index.ts";
 import { ManeuverIcon } from "./ManeuverIcon.tsx";
 import { MANEUVER_TEXT, OFF_ROUTE_UI_M, formatManeuverDistance, useRouteProgress, type RouteProgress } from "./model.ts";
@@ -11,6 +13,7 @@ import "./route.css";
 
 export { ManeuverIcon } from "./ManeuverIcon.tsx";
 export * from "./model.ts";
+export { DestinationSheet, RouteTargetBar, labelForPoint, loadPlaces, sendRouteTarget, usePlaces } from "./destination.tsx";
 
 /** Powód braku trasy (do komunikatu). null = trasa jest. */
 function useNoRouteReason(progress: RouteProgress | null): string | null {
@@ -18,7 +21,7 @@ function useNoRouteReason(progress: RouteProgress | null): string | null {
   const job = useConfig((c) => c.job);
   if (progress) return null;
   if (!supported) return "Trasa niedostępna: brak grafu dróg na PC (npm run map:graph)";
-  if (!job) return "Brak zlecenia: trasa pojawi się po przyjęciu zlecenia";
+  if (!job) return "Brak zlecenia i celu. Wyszukaj cel albo przytrzymaj palec na mapie.";
   return "Wyznaczam trasę…";
 }
 
@@ -27,7 +30,18 @@ export function NextManeuver({ compact = false }: { compact?: boolean }) {
   const progress = useRouteProgress(3);
   const imperial = useUnits().speed === "mph";
   const reason = useNoRouteReason(progress);
-  if (!progress) return <div className="rt-empty" data-testid="route-empty">{reason}</div>;
+  const supported = useConnectionSelect((c) => c.hello?.capabilities.route ?? false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  if (!progress)
+    return (
+      <div className="rt-empty" data-testid="route-empty" data-compact={compact || undefined}>
+        <span>{reason}</span>
+        {supported && !compact ? (
+          <GlassButton size="md" icon={<Icon name="search" />} label="Wybierz cel" onPress={() => setSearchOpen(true)} />
+        ) : null}
+        <DestinationSheet open={searchOpen} onClose={() => setSearchOpen(false)} />
+      </div>
+    );
   const [cur, next] = progress.upcoming;
   if (!cur) return <div className="rt-empty">Na miejscu</div>;
   const off = progress.offset > OFF_ROUTE_UI_M;

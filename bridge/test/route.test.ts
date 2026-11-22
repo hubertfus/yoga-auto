@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { cumulative, emptyFullState, gameCumulative, projectOnRoute, type JobConfig } from "@yoga-auto/protocol";
 import { EDGE_FERRY, EDGE_ROAD, NODE_CITY, buildGraph, companyNodes, decodeGraph, encodeGraph } from "../src/route/graph.ts";
 import { buildRoute, classifyTurn, hermite, planRoute, simplify, turnAngle } from "../src/route/planner.ts";
-import { OFF_ROUTE_MS, RouteService } from "../src/route/service.ts";
+import { OFF_ROUTE_MS, RouteService, goalsNear } from "../src/route/service.ts";
+import { isRouteTarget } from "../src/guards.ts";
 
 /**
  * Skrzyżowanie „+” (oś z gry rośnie na południe, więc północ = −z):
@@ -218,5 +219,78 @@ describe("RouteService", () => {
     });
     const r = buildRoute(g, planRoute(g, north, [2])!, north);
     expect(r.maneuvers.map((m) => m.kind)).toEqual(["ferry", "arrive"]);
+  });
+});
+
+describe("ręczny cel (route.set)", () => {
+  const jobTo = (city: string, company: string): JobConfig => ({
+    cargo: "x",
+    cargoId: "x",
+    mass: 1,
+    income: 1,
+    deliveryTime: null,
+    plannedDistanceKm: 1,
+    source: { city: "A", cityId: "a", company: "A", companyId: "a" },
+    destination: { city, cityId: city, company, companyId: company },
+    market: "cargo_market",
+    special: false,
+    cargoLoaded: true,
+  });
+
+  it("bez zlecenia: trasa do punktu z mapy", () => {
+    const { g } = cross();
+    const svc = new RouteService(g);
+    const st = emptyFullState();
+    st.fast.placement = { ...north, y: 0 };
+    svc.setManual({ x: 95, z: -95, label: "Punkt" });
+    const r = svc.update(st, 0)!;
+    expect(r.manual).toBe(true);
+    expect(r.to.city).toBe("Punkt");
+    expect(r.maneuvers.map((m) => m.kind)).toEqual(["right", "arrive"]);
+    svc.setManual(null);
+    expect(svc.update(st, 100)).toBeNull();
+  });
+
+  it("ręczny cel ma pierwszeństwo przed trwającym zleceniem, nowe zlecenie go zastępuje", () => {
+    const { g } = cross();
+    const svc = new RouteService(g);
+    const st = emptyFullState();
+    st.fast.placement = { ...north, y: 0 };
+    st.config.job = jobTo("west", "c");
+    expect(svc.update(st, 0)!.maneuvers[0]!.kind).toBe("left");
+    svc.setManual({ x: 100, z: -100, label: "D" });
+    expect(svc.update(st, 10)!.maneuvers[0]!.kind).toBe("right");
+    st.config.job = jobTo("north", "e"); // nowe zlecenie
+    const r = svc.update(st, 20)!;
+    expect(r.manual).toBeUndefined();
+    expect(svc.manual).toBeNull();
+    expect(r.maneuvers.map((m) => m.kind)).toEqual(["arrive"]);
+  });
+
+  it("postój przy ręcznym celu kończy nawigację", () => {
+    const { g } = cross();
+    const svc = new RouteService(g);
+    const st = emptyFullState();
+    st.fast.placement = { ...north, y: 0 };
+    svc.setManual({ x: 100, z: -100, label: "D" });
+    expect(svc.update(st, 0)).toBeTruthy();
+    st.fast.placement = { x: 90, y: 0, z: -100, heading: 0.75 };
+    st.fast.speed = 0;
+    expect(svc.update(st, 1000)).toBeNull();
+    expect(svc.manual).toBeNull();
+  });
+
+  it("goalsNear: najbliższe węzły z wyjazdem", () => {
+    const { g } = cross();
+    expect(goalsNear(g, 99, -99)[0]).toBe(3);
+    expect(goalsNear(g, 1e5, 1e5)).toEqual([]);
+  });
+
+  it("walidacja celu z sieci", () => {
+    expect(isRouteTarget({ x: 1, z: 2, label: "a" })).toBe(true);
+    expect(isRouteTarget({ x: Number.NaN, z: 2, label: "a" })).toBe(false);
+    expect(isRouteTarget({ x: 1, z: 2 })).toBe(false);
+    expect(isRouteTarget({ x: 1e9, z: 2, label: "a" })).toBe(false);
+    expect(isRouteTarget(null)).toBe(false);
   });
 });

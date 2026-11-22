@@ -2009,7 +2009,11 @@
             "city",
             "company"
           ],
-          "description": "cel trasy (firma docelowa zlecenia)"
+          "description": "cel trasy: firma docelowa zlecenia albo (gdy `manual`) punkt wybrany na tablecie — wtedy `city` = jego nazwa"
+        },
+        "manual": {
+          "type": "boolean",
+          "description": "cel wybrany ręcznie na tablecie (`route.set`), nie ze zlecenia"
         },
         "points": {
           "type": "array",

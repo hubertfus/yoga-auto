@@ -32,3 +32,19 @@
 .map-widget { position: relative; height: calc(100% + 2 * var(--s-4)); margin: calc(var(--s-4) * -1); }
 .map-widget .map-view { border-radius: inherit; }
 .map-widget .map-nofix, .map-widget .map-empty { font: var(--t-caption); }
+
+/* wybór celu przytrzymaniem palca */
+.map-pick {
+  position: absolute; z-index: 3; transform: translate(-50%, calc(-100% - 18px));
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-lg, 24px); background: var(--glass-flat, var(--glass-tint)); backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45); max-width: 360px;
+}
+.map-pick::after {
+  content: ""; position: absolute; left: 50%; bottom: -10px; width: 18px; height: 18px; transform: translateX(-50%) rotate(45deg);
+  background: inherit; border-radius: 3px;
+}
+.map-pick__label { font: var(--t-label); color: var(--text-1); }
+.map-pick__actions { display: flex; gap: var(--s-2); }
+.map-route-overlay .rt-target { margin-bottom: var(--s-2); }
+.map-route-overlay { pointer-events: auto; }

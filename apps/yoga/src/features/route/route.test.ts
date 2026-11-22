@@ -50,3 +50,27 @@ describe("formatManeuverDistance", () => {
     expect(formatManeuverDistance(17_000, true)).toBe("11 mi");
   });
 });
+
+describe("wybór celu", async () => {
+  const { searchPlaces, labelForPoint } = await import("./destination.tsx");
+  const places = [
+    { name: "Łódź", sub: "poland", x: 0, z: 0, kind: "city" as const },
+    { name: "Lodz Logistics", sub: "Łódź", x: 10, z: 10, kind: "company" as const },
+    { name: "Berlin", sub: "germany", x: 5000, z: 0, kind: "city" as const },
+    { name: "Tradeaux", sub: "Berlin", x: 5100, z: 0, kind: "company" as const },
+  ];
+  it("wyszukiwanie bez polskich znaków, miasta przed firmami", () => {
+    expect(searchPlaces(places, "lodz").map((p) => p.name)).toEqual(["Łódź", "Lodz Logistics"]);
+    expect(searchPlaces(places, "berl").map((p) => p.name)).toEqual(["Berlin", "Tradeaux"]);
+    expect(searchPlaces(places, "trade").map((p) => p.name)).toEqual(["Tradeaux"]);
+    expect(searchPlaces(places, "zzz")).toEqual([]);
+  });
+  it("pusty tekst: najpierw miasta, najbliższe ciężarówki", () => {
+    expect(searchPlaces(places, "", { x: 4900, z: 0 })[0]!.name).toBe("Berlin");
+  });
+  it("nazwa punktu z mapy: firma obok albo okolice miasta", () => {
+    expect(labelForPoint(places, 5120, 0)).toBe("Tradeaux, Berlin");
+    expect(labelForPoint(places, 1500, 0)).toBe("Okolice: Łódź");
+    expect(labelForPoint(places, 20000, 0)).toBe("Punkt na mapie");
+  });
+});

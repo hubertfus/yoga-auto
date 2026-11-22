@@ -26,7 +26,7 @@ import {
   type TelemetrySource,
 } from "@yoga-auto/protocol";
 import { hostAllowed, isPrivateAddress, originAllowed, type OriginPolicy } from "./access.ts";
-import { isClientFrame } from "./guards.ts";
+import { isClientFrame, isRouteTarget } from "./guards.ts";
 import { AlertEngine, type AlertThresholds } from "./alerts.ts";
 import { CommandRouter } from "./commands.ts";
 import type { DeviceStore } from "./devices.ts";
@@ -465,7 +465,8 @@ export async function startBridge(opts: BridgeOptions) {
           break;
         case "cmd":
         case "media":
-        case "trip.reset": {
+        case "trip.reset":
+        case "route.set": {
           const verdict = rate.hit(c.id);
           if (verdict === "flood") {
             log("warn", `client ${c.id} flooding commands, closing`);
@@ -479,6 +480,20 @@ export async function startBridge(opts: BridgeOptions) {
           if (msg.t === "cmd" && opts.inputEnabled === false)
             send(c, { t: "ack", id: msg.id, ok: false, error: "input_disabled", tookMs: 0 });
           else if (msg.t === "cmd") send(c, await router.handle(msg, c.id));
+          else if (msg.t === "route.set") {
+            const target = (msg as { target?: unknown }).target;
+            if (!routes) send(c, { t: "ack", id: msg.id, ok: false, error: "not_supported", tookMs: 0 });
+            else if (target !== null && !isRouteTarget(target))
+              send(c, { t: "ack", id: msg.id, ok: false, error: "invalid_value", tookMs: 0 });
+            else {
+              routes.setManual(target === null ? null : { x: target.x, z: target.z, label: target.label.slice(0, 80) });
+              if (telDirty) applyTel();
+              const now = Date.now();
+              const r = routes.update(store.state, now);
+              if (r !== undefined) broadcast({ t: "route", ts: now, route: r });
+              send(c, { t: "ack", id: msg.id, ok: true, tookMs: 0 });
+            }
+          }
           else if (msg.t === "trip.reset") {
             // `which` to rozszerzenie M4 (brak = "A", zgodnie ze starym kontraktem)
             if ((msg as { which?: unknown }).which === "B") {
@@ -487,11 +502,6 @@ export async function startBridge(opts: BridgeOptions) {
             } else {
               trip.reset();
               store.setSlow("trip", trip.state);
-  // M4 (addytywnie, bez zmiany kontraktu): `slow.tripB` — drugi licznik, kasowany osobno (`trip.reset` z `which: "B"`)
-  const tripB = new TripComputer(opts.tripBStorage ?? new MemoryTripStorage());
-  const setTripB = () => store.setSlow("tripB" as keyof SlowState, tripB.state as never);
-  setTripB();
-  const jobs = new JobHistory(opts.jobStorage ?? new MemoryJobStorage());
             }
             send(c, { t: "ack", id: msg.id, ok: true, tookMs: 0 });
           }

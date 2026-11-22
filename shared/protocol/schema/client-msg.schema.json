@@ -21,6 +21,9 @@
         },
         {
           "$ref": "#/definitions/TripResetMsg"
+        },
+        {
+          "$ref": "#/definitions/RouteSetMsg"
         }
       ]
     },
@@ -223,6 +226,54 @@
         "id"
       ],
       "description": "Reset komputera pokładowego."
+    },
+    "RouteSetMsg": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "route.set"
+        },
+        "id": {
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RouteTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "t",
+        "id",
+        "target"
+      ],
+      "description": "UI → bridge: ustaw (albo `target: null` — wyczyść) ręczny cel trasy. Gra nie udostępnia celu z jej GPS, więc bez zlecenia cel wybiera się na tablecie. Odpowiedź: `ack` (ok:false + invalid_value przy złych danych)."
+    },
+    "RouteTarget": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "x",
+        "z",
+        "label"
+      ],
+      "description": "Cel wybrany na tablecie: punkt w metrach świata gry + nazwa do wyświetlenia."
     }
   }
 }

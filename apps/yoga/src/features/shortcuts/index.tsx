@@ -49,9 +49,9 @@ export const SCREEN_SHORTCUTS: readonly ScreenShortcut[] = [
 function makeActionTile(s: ActionShortcut) {
   function ActionTile() {
     return (
+      // cały kafel jest przyciskiem (wcześniej reagowało tylko kółko w środku)
       <div className="sc-tile sc-tile--action">
-        <ActionButton id={s.action} size="xl" showLabel={false} {...(s.icon ? { icon: s.icon } : {})} className="sc-tile__btn" />
-        <span className="sc-tile__label">{s.label}</span>
+        <ActionButton id={s.action} size="xl" label={s.label} {...(s.icon ? { icon: s.icon } : {})} className="sc-tile__btn" />
       </div>
     );
   }

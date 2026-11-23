@@ -8,12 +8,16 @@
  * Plik (little-endian):
  *   "YARG" | u32 version=3 | u32 n (węzły) | u32 m (krawędzie) | u32 companiesBytes
  *   f32 x[n] | f32 z[n] | f32 rot[n] | u32 off[2n+1] | u32 to[m] | f32 dist[m] | f32 dur[m] | u8 flags[m] | pad do 4 B
- *   u8 nodeFlags[n] | pad do 4 B | utf8 JSON firm: [[cityToken, companyToken, nodeIndex], …]
+ *   u8 nodeFlags[n] | pad do 4 B | utf8 JSON firm: [[cityToken, companyToken, nodeIndex], …] | pad do 4 B
+ *   (v4) u32 P | u32 geomOff[m+1] | f32 geom[2P] — geometria krawędzi (x, z) w kolejności jazdy, z końcami:
+ *        przejazdy przez prefaby (skrzyżowania, ronda, zjazdy) środkiem pasa po krzywych nawigacyjnych gry;
+ *        końce leżą na pasie (obok węzłów), planner przesuwa do nich drogi.
+ * Wersja 3 (bez geometrii) jest nadal czytana.
  */
 import { readFileSync } from "node:fs";
 
 export const GRAPH_MAGIC = "YARG";
-export const GRAPH_VERSION = 3;
+export const GRAPH_VERSION = 4;
 
 /** krawędź to prom */
 export const EDGE_FERRY = 1;
@@ -37,6 +41,9 @@ export interface RouteGraph {
   nodeFlags: Uint8Array;
   /** `${city}/${company}` → indeksy węzłów (węzeł wjazdu do firmy) */
   companies: Map<string, number[]>;
+  /** geometria krawędzi e (z końcami, środkiem pasa): punkty geom[2·geomOff[e] .. 2·geomOff[e+1]); null = brak (v3) */
+  geomOff: Uint32Array | null;
+  geom: Float32Array | null;
   grid: SpatialGrid;
 }
 
@@ -48,6 +55,8 @@ export interface GraphInput {
   /** krawędzie: [fromState, toState, dist, dur, flags] */
   edges: readonly (readonly [number, number, number, number, number])[];
   companies?: readonly (readonly [string, string, number])[];
+  /** geometria krawędzi (równoległa do `edges`): polilinia [x0, z0, x1, z1, …] w kolejności jazdy, z końcami */
+  geometry?: readonly (ArrayLike<number> | null | undefined)[];
 }
 
 interface Arrays {
@@ -61,6 +70,8 @@ interface Arrays {
   dur: Float32Array;
   flags: Uint8Array;
   nodeFlags: Uint8Array;
+  geomOff: Uint32Array | null;
+  geom: Float32Array | null;
 }
 
 const companyKey = (city: string, company: string) => `${city}/${company}`;
@@ -78,12 +89,30 @@ export function buildGraph(input: GraphInput): RouteGraph {
   const dur = new Float32Array(m);
   const flags = new Uint8Array(m);
   const fill = off.slice(0, states);
-  for (const [from, t, d, du, f] of input.edges) {
+  const slot = new Uint32Array(m); // indeks krawędzi wejściowej → pozycja w CSR
+  input.edges.forEach(([from, t, d, du, f], k) => {
     const i = fill[from]!++;
+    slot[k] = i;
     to[i] = t;
     dist[i] = d;
     dur[i] = du;
     flags[i] = f;
+  });
+  let geomOff: Uint32Array | null = null;
+  let geom: Float32Array | null = null;
+  if (input.geometry) {
+    const count = new Uint32Array(m);
+    input.geometry.forEach((pts, k) => {
+      if (pts && k < m) count[slot[k]!] = pts.length >> 1;
+    });
+    geomOff = new Uint32Array(m + 1);
+    for (let i = 0; i < m; i++) geomOff[i + 1] = geomOff[i]! + count[i]!;
+    geom = new Float32Array(2 * geomOff[m]!);
+    input.geometry.forEach((pts, k) => {
+      if (!pts || k >= m) return;
+      const at = 2 * geomOff![slot[k]!]!;
+      for (let j = 0; j < (pts.length & ~1); j++) geom![at + j] = pts[j]!;
+    });
   }
   const nodeFlags = input.nodeFlags ? Uint8Array.from(input.nodeFlags) : new Uint8Array(n);
   return finish(
@@ -98,10 +127,19 @@ export function buildGraph(input: GraphInput): RouteGraph {
       dur,
       flags,
       nodeFlags,
+      geomOff,
+      geom,
     },
     input.companies ?? [],
   );
 }
+
+/** Polilinia krawędzi e (x, z na przemian, z końcami); pusta tablica = brak danych (cięciwa / krzywa drogi). */
+export function edgeGeometry(g: RouteGraph, e: number): Float32Array {
+  if (!g.geomOff || !g.geom) return EMPTY;
+  return g.geom.subarray(2 * g.geomOff[e]!, 2 * g.geomOff[e + 1]!);
+}
+const EMPTY = new Float32Array(0);
 
 function finish(a: Arrays, companies: readonly (readonly [string, string, number])[]): RouteGraph {
   const cmap = new Map<string, number[]>();
@@ -127,6 +165,10 @@ export function encodeGraph(g: RouteGraph): Buffer {
   }
   const cjson = Buffer.from(JSON.stringify(comp), "utf8");
   const m = g.to.length;
+  const geomOff = g.geomOff ?? new Uint32Array(m + 1);
+  const geom = g.geom ?? new Float32Array(0);
+  const P = Buffer.alloc(4);
+  P.writeUInt32LE(geom.length >> 1, 0);
   const head = Buffer.alloc(20);
   head.write(GRAPH_MAGIC, 0, "ascii");
   head.writeUInt32LE(GRAPH_VERSION, 4);
@@ -147,13 +189,17 @@ export function encodeGraph(g: RouteGraph): Buffer {
     view(g.nodeFlags),
     Buffer.alloc(pad4(g.n)),
     cjson,
+    Buffer.alloc(pad4(cjson.length)),
+    P,
+    view(geomOff),
+    view(geom),
   ]);
 }
 
 export function decodeGraph(buf: Buffer): RouteGraph {
   if (buf.length < 20 || buf.toString("ascii", 0, 4) !== GRAPH_MAGIC) throw new Error("route-graph: zły nagłówek");
   const version = buf.readUInt32LE(4);
-  if (version !== GRAPH_VERSION)
+  if (version !== GRAPH_VERSION && version !== 3)
     throw new Error(`route-graph: wersja ${version}, oczekiwano ${GRAPH_VERSION} (wygeneruj ponownie: npm run map:graph)`);
   const n = buf.readUInt32LE(8);
   const m = buf.readUInt32LE(12);
@@ -179,7 +225,17 @@ export function decodeGraph(buf: Buffer): RouteGraph {
   p += pad4(n);
   if (p + cbytes > buf.length) throw new Error("route-graph: plik ucięty");
   const companies = JSON.parse(buf.toString("utf8", p, p + cbytes)) as [string, string, number][];
-  return finish({ n, x, z, rot, off, to, dist, dur, flags, nodeFlags }, companies);
+  p += cbytes + pad4(cbytes);
+  let geomOff: Uint32Array | null = null;
+  let geom: Float32Array | null = null;
+  if (version >= 4) {
+    if (p + 4 > buf.length) throw new Error("route-graph: plik ucięty");
+    const P = buf.readUInt32LE(p);
+    p += 4;
+    geomOff = new Uint32Array(take(4 * (m + 1)));
+    geom = new Float32Array(take(8 * P));
+  }
+  return finish({ n, x, z, rot, off, to, dist, dur, flags, nodeFlags, geomOff, geom }, companies);
 }
 
 export const loadGraph = (file: string): RouteGraph => decodeGraph(readFileSync(file));

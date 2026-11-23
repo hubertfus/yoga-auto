@@ -35,6 +35,13 @@ function DevScreen() {
           {JSON.stringify({ status, lights, job: job && `${job.source.city} → ${job.destination.city}` }, null, 2)}
         </pre>
       </GlassPanel>
+      {job?.bus ? (
+        <GlassPanel title="Kurs autobusowy: surowe atrybuty bus_job">
+          <pre style={{ margin: 0, font: "var(--t-caption)", maxHeight: 300, overflow: "auto" }} data-testid="dev-bus-raw">
+            {JSON.stringify(job.bus.raw, null, 2)}
+          </pre>
+        </GlassPanel>
+      ) : null}
       <GlassPanel title="Akcje (surowe)">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           {(Object.keys(ACTIONS) as ActionId[]).map((id) => (

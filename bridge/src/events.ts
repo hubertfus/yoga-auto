@@ -22,6 +22,21 @@ export function mapGameplayEvent(e: ipc.IpcGameplay): GameEvent | null {
       };
     case "job.cancelled":
       return { kind: "job.cancelled", penalty: n(a["cancel.penalty"]) };
+    // kursy autobusowe (SDK 1.20+): atrybuty nieopisane przez SCS — zakładamy nazwy jak przy `job.*`
+    case "bus_job.delivered":
+      return {
+        kind: "job.delivered",
+        jobKind: "bus",
+        revenue: n(a["revenue"]),
+        earnedXp: n(a["earned.xp"]),
+        cargoDamage: 0,
+        distanceKm: n(a["distance.km"]),
+        deliveryTime: n(a["delivery.time"]),
+        autoParked: b(a["auto.park.used"]),
+        autoLoaded: false,
+      };
+    case "bus_job.cancelled":
+      return { kind: "job.cancelled", jobKind: "bus", penalty: n(a["cancel.penalty"]) };
     case "player.fined":
       return { kind: "player.fined", offence: s(a["fine.offence"]), amount: n(a["fine.amount"]) };
     case "player.tollgate.paid":

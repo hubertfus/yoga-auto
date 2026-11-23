@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cumulative, emptyFullState, gameCumulative, projectOnRoute, type JobConfig } from "@yoga-auto/protocol";
-import { EDGE_FERRY, EDGE_ROAD, NODE_CITY, buildGraph, companyNodes, decodeGraph, encodeGraph } from "../src/route/graph.ts";
-import { buildRoute, classifyTurn, hermite, planRoute, simplify, turnAngle } from "../src/route/planner.ts";
+import { EDGE_FERRY, EDGE_ROAD, NODE_CITY, buildGraph, companyNodes, decodeGraph, edgeGeometry, encodeGraph } from "../src/route/graph.ts";
+import { buildRoute, classifyTurn, hermite, laneOffsets, planRoute, simplify, turnAngle } from "../src/route/planner.ts";
 import { OFF_ROUTE_MS, RouteService, goalsNear } from "../src/route/service.ts";
 import { isRouteTarget } from "../src/guards.ts";
 
@@ -60,6 +60,39 @@ describe("route graph", () => {
     expect([...g2.nodeFlags]).toEqual([...g.nodeFlags]);
     expect(companyNodes(g2, "east", "d")).toEqual([3]);
   });
+  it("v4: geometria krawędzi przechodzi przez encode → decode; stary plik v3 nadal czytany", () => {
+    const { g: g0 } = cross();
+    // łuk przejazdu B → D (skręt w prawo przez „prefab”): kolejność krawędzi wejściowych jak w cross()
+    const arc = [10, -100 + 0, 40, -97, 70, -99];
+    const g = buildGraph({
+      x: [...g0.x],
+      z: [...g0.z],
+      nodeFlags: [...g0.nodeFlags],
+      edges: [
+        [0, 2, 100, 10, EDGE_ROAD],
+        [2, 4, 100, 10, 0],
+        [2, 6, 100, 10, 0],
+        [2, 8, 100, 10, 0],
+        [6, 10, 4900, 200, EDGE_ROAD],
+        [3, 1, 100, 10, EDGE_ROAD],
+        [9, 3, 100, 10, 0],
+      ],
+      geometry: [null, null, arc, null, null, null, null],
+    });
+    const e = [...Array(g.to.length).keys()].find((k) => g.to[k] === 6)!;
+    expect([...edgeGeometry(g, e)]).toEqual(arc);
+    const g2 = decodeGraph(encodeGraph(g));
+    expect([...edgeGeometry(g2, e)]).toEqual(arc);
+    expect(edgeGeometry(g2, 0).length).toBe(0);
+    // v3 = v4 bez sekcji geometrii
+    const v4 = encodeGraph(g0);
+    const cut = v4.length - 4 - 4 * (g0.to.length + 1);
+    const v3 = Buffer.from(v4.subarray(0, cut));
+    v3.writeUInt32LE(3, 4);
+    const g3 = decodeGraph(v3);
+    expect(g3.geomOff).toBeNull();
+    expect([...g3.to]).toEqual([...g0.to]);
+  });
   it("zły plik → błąd", () => {
     expect(() => decodeGraph(Buffer.from("nope"))).toThrow();
   });
@@ -71,6 +104,32 @@ describe("route graph", () => {
 });
 
 describe("planRoute + buildRoute", () => {
+  it("przejazd przez prefab po zapisanej geometrii (środkiem pasa), a droga przesunięta na pas", () => {
+    // A(0,0) → B(0,-100) droga na północ; B → D(100,-100) skręt w prawo przez prefab: ścieżka pasa 2 m w prawo
+    const arc = [2, -98, 30, -125, 98, -98];
+    const g = buildGraph({
+      x: [0, 0, -100, 100],
+      z: [0, -100, -100, -100],
+      rot: [-Math.PI / 2, -Math.PI / 2, 0, 0],
+      edges: [
+        [0, 2, 100, 10, EDGE_ROAD],
+        [2, 6, 100, 10, 0],
+        [6, 4, 100, 10, 0], // D → C (dalej na zachód, bez geometrii: cięciwa na pasie)
+      ],
+      geometry: [null, arc, null],
+    });
+    const plan = { states: [0, 2, 6], edges: [0, 1], duration: 20 };
+    const r = buildRoute(g, plan);
+    const pts: [number, number][] = [];
+    for (let i = 0; i < r.points.length; i += 2) pts.push([r.points[i]!, r.points[i + 1]!]);
+    // łuk prefabu w trasie (końce dosunięte do punktów pasa przy węzłach → przesunięcie ≤ 2 m)
+    expect(pts.some(([x, z]) => Math.hypot(x - 30, z + 125) < 2.5)).toBe(true);
+    expect(pts.at(-1)).toEqual([100, -98]); // węzeł D przesunięty o 2 m w prawo (na południe)
+    // droga A → B jedzie pasem 2 m w prawo (na wschód), nie osią x = 0
+    expect(pts[0]![0]).toBe(2);
+    expect(pts[0]![1]).toBeCloseTo(0, 6);
+    for (const v of laneOffsets(g, plan)) expect(v).toBeCloseTo(2, 5);
+  });
   it("skręt w prawo: B → D", () => {
     const { g, D } = cross();
     const plan = planRoute(g, north, [D])!;

@@ -261,13 +261,14 @@ export function GlassCard({ size = "1x1", accent, onPress, onLongPress, classNam
       onPointerUp={clear}
       onPointerCancel={clear}
       onContextMenu={(e) => e.preventDefault()}
-      onClick={() => {
+      // po przytrzymaniu (edycja układu) puszczenie palca nie może „kliknąć” przycisku w środku kafla
+      onClickCapture={(e: { stopPropagation(): void }) => {
         if (longFired.current) {
           longFired.current = false;
-          return;
+          e.stopPropagation();
         }
-        onPress?.();
       }}
+      onClick={() => onPress?.()}
     >
       {children}
     </GlassSurface>

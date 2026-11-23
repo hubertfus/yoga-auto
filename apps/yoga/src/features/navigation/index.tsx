@@ -4,6 +4,8 @@ import type { JobConfig } from "@yoga-auto/protocol";
 import { registerScreen, registerWidget } from "../../core/registry.ts";
 import { useConfig, useSlow } from "../../core/store.ts";
 import { Bar, CardTitle, Stat } from "../_shared/shared.tsx";
+import { isBusJob, passengersText, stopsText } from "../_shared/job.ts";
+import { BusStops, nextStop } from "../route/bus.tsx";
 import { LimitSign } from "../gauges/index.tsx";
 import { MANEUVER_TEXT, ManeuverIcon, ManeuverList, NextManeuver, RouteTargetBar, formatManeuverDistance, useRouteProgress } from "../route/index.tsx";
 import {
@@ -77,16 +79,28 @@ function JobWidget() {
   const job = useConfig((c) => c.job);
   const gameNow = useSlow((s) => s.time.game);
   const left = minutesToDeadline(job, gameNow);
+  const bus = isBusJob(job);
   return (
     <div className="ft-root">
-      <CardTitle icon={<Icon name="package" size={18} />}>Zlecenie</CardTitle>
+      <CardTitle icon={<Icon name={bus ? "bus" : "package"} size={18} />}>{bus ? "Kurs" : "Zlecenie"}</CardTitle>
       {job ? (
         <>
           <div className="ft-grow" />
-          <div className="ft-mid" style={{ lineHeight: 1.15 }}>
-            {job.source.city} <span className="ft-dimmer">→</span> {job.destination.city}
+          {bus && nextStop(job) ? (
+            <div className="ft-mid" style={{ lineHeight: 1.15 }} data-testid="job-next-stop">
+              <span className="ft-dimmer">→</span> {nextStop(job)!.name}{" "}
+              <span className="ft-dimmer" style={{ font: "var(--t-caption)" }}>
+                {nextStop(job)!.stage}
+              </span>
+            </div>
+          ) : (
+            <div className="ft-mid" style={{ lineHeight: 1.15 }}>
+              {job.source.city} <span className="ft-dimmer">→</span> {job.destination.city}
+            </div>
+          )}
+          <div className="ft-dim" data-testid="job-what">
+            {bus ? (passengersText(job) ?? "Kurs autobusowy") : job.cargo}
           </div>
-          <div className="ft-dim">{job.cargo}</div>
           <div className="ft-spread" style={{ flexWrap: "wrap", rowGap: 0 }}>
             <span className="ft-mid" style={{ whiteSpace: "nowrap" }}>{formatMoney(job.income)}</span>
             {left !== null ? (
@@ -112,25 +126,38 @@ export function JobPanel() {
   const cargoDamage = useSlow((s) => s.trailers.find((t) => t.connected)?.cargoDamage ?? s.trailers[0]?.cargoDamage ?? null);
   const rest = useSlow((s) => s.time.restStopMin);
   const left = minutesToDeadline(job, gameNow);
+  const bus = isBusJob(job);
   return (
-    <GlassPanel title="Zlecenie" tint="strong" padding={24} style={{ minWidth: 380 }}>
+    <GlassPanel title={bus ? "Kurs autobusowy" : "Zlecenie"} tint="strong" padding={24} style={{ minWidth: 380 }}>
       {job ? (
         <div className="ft-root" style={{ gap: "var(--s-3)" }}>
-          <div className="ft-dim">
-            {job.cargo} · {formatMass(job.mass)}
+          <div className="ft-dim" data-testid="job-panel-what">
+            {bus
+              ? [nextStop(job) ? `Etap ${nextStop(job)!.stage}` : null, passengersText(job) ? `${passengersText(job)} na pokładzie` : null, formatDistance(job.plannedDistanceKm * 1000, u)]
+                  .filter(Boolean)
+                  .join(" · ")
+              : `${job.cargo} · ${formatMass(job.mass)}`}
           </div>
-          <div>
-            <div className="ft-mid">{job.source.city}</div>
-            <div className="ft-dimmer">{job.source.company}</div>
-          </div>
-          <div className="ft-dim ft-mid">↓ {formatDistance(job.plannedDistanceKm * 1000, u)}</div>
-          <div>
-            <div className="ft-mid">{job.destination.city}</div>
-            <div className="ft-dimmer">{job.destination.company}</div>
-          </div>
+          {bus && job.bus?.stages.length ? (
+            <div style={{ minHeight: 0, maxHeight: 330, overflow: "auto", overscrollBehavior: "contain" }}>
+              <BusStops job={job} />
+            </div>
+          ) : (
+            <>
+              <div>
+                <div className="ft-mid">{job.source.city}</div>
+                <div className="ft-dimmer">{job.source.company}</div>
+              </div>
+              <div className="ft-dim ft-mid">↓ {formatDistance(job.plannedDistanceKm * 1000, u)}</div>
+              <div>
+                <div className="ft-mid">{job.destination.city}</div>
+                <div className="ft-dimmer">{job.destination.company}</div>
+              </div>
+            </>
+          )}
           <div className="ft-spread" data-testid="job-deadline">
             <Stat
-              label="Termin"
+              label={bus ? `Przyjazd: ${job.destination.city}` : "Termin"}
               value={job.deliveryTime === null ? "bez terminu" : formatGameTime(job.deliveryTime)}
               tone={left !== null && left < 0 ? "crit" : undefined}
             />
@@ -140,14 +167,18 @@ export function JobPanel() {
           </div>
           <div className="ft-spread">
             <Stat label="Zarobek" value={formatMoney(job.income)} />
-            <Stat label="Uszkodzenie ładunku" value={formatPercent(cargoDamage, true)} tone={cargoDamage !== null && cargoDamage > 0.1 ? "warn" : undefined} />
+            {bus ? (
+              <Stat label="Przystanki" value={stopsText(job) ?? "–"} />
+            ) : (
+              <Stat label="Uszkodzenie ładunku" value={formatPercent(cargoDamage, true)} tone={cargoDamage !== null && cargoDamage > 0.1 ? "warn" : undefined} />
+            )}
           </div>
           <Stat
             label="Odpoczynek za"
             value={rest === null ? "–" : rest < 0 ? `−${formatMinutes(-rest)}` : formatMinutes(rest)}
             tone={rest !== null && rest <= 0 ? "crit" : rest !== null && rest <= 60 ? "warn" : undefined}
           />
-          {job.cargoLoaded ? null : <div className="ft-dimmer">Ładunek jeszcze nie załadowany</div>}
+          {job.cargoLoaded ? null : <div className="ft-dimmer">{bus ? "Pasażerowie jeszcze nie wsiedli" : "Ładunek jeszcze nie załadowany"}</div>}
         </div>
       ) : (
         <div className="ft-nodata">Brak aktywnego zlecenia</div>

@@ -11,6 +11,8 @@ import { formatDuration, formatKm, formatMass, formatMinutes, formatMoney, forma
 export interface JobRecord {
   id: string;
   status: "delivered" | "cancelled";
+  /** `bus` = kurs autobusowy */
+  kind?: "cargo" | "bus";
   cargo: string;
   mass: number;
   from: { city: string; company: string } | null;
@@ -90,8 +92,8 @@ function JobRow({ job }: { job: JobRecord }) {
       <div className="ft-grow">
         <div className="ft-mid">{routeLabel(job)}</div>
         <div className="ft-dim">
-          {job.cargo || "–"}
-          {job.mass ? ` · ${formatMass(job.mass)}` : ""}
+          {job.kind === "bus" ? "Kurs autobusowy" : job.cargo || "–"}
+          {job.kind !== "bus" && job.mass ? ` · ${formatMass(job.mass)}` : ""}
           {ok && job.cargoDamage > 0 ? ` · uszk. ${formatPercent(job.cargoDamage, true)}` : ""}
         </div>
       </div>

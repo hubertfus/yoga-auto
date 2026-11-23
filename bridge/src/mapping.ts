@@ -2,7 +2,7 @@
  * Surowe kanały/atrybuty SDK (IPC) → FastState / SlowState / ConfigState.
  * F0: mapowanie bazowe. S2: progi, eventy pochodne (job.started, trailer.attached), trip, alerty.
  */
-import type { ConfigState, JobConfig, TrailerConfig, TrailerState, TruckConfig, ipc } from "@yoga-auto/protocol";
+import type { BusJobInfo, BusStage, BusStop, ConfigState, JobConfig, TrailerConfig, TrailerState, TruckConfig, VehicleKind, ipc } from "@yoga-auto/protocol";
 import type { StateStore } from "./store.ts";
 
 type V = ipc.IpcValue;
@@ -117,11 +117,49 @@ export function applyTelemetry(store: StateStore, raw: RawChannels): void {
   store.setSlow("trailerLiftAxle", bool(g("truck.trailer.lift_axle")));
 }
 
+/**
+ * Zlecenie z ładunkiem (`job`) i kurs autobusowy (`bus_job`) przychodzą osobnymi konfiguracjami; w stanie jest
+ * jedno `config.job` (kurs autobusowy ma pierwszeństwo). Model pojazdu pamiętamy, żeby po końcu kursu wrócić
+ * do rodzaju wynikającego z modelu.
+ */
+interface JobSlots {
+  cargo: JobConfig | null;
+  bus: JobConfig | null;
+  modelKind: VehicleKind;
+}
+const slots = new WeakMap<StateStore, JobSlots>();
+function slotsOf(store: StateStore): JobSlots {
+  let s = slots.get(store);
+  if (!s) slots.set(store, (s = { cargo: null, bus: null, modelKind: "truck" }));
+  return s;
+}
+
+/** Modele autokarów (ETS2: MAN, Scania, Volvo i mody); nazwy pojazdów ciężarowych tego nie zawierają. */
+const BUS_MODEL = /coach|(^|[._\s-])bus($|[._\s-])|lion'?s|touring|irizar|setra|tourismo|travego|neoplan|intouro|tourliner|citaro|volvo[._\s-]?9[0-9]00/i;
+export function vehicleKindOf(a: Record<string, V>): VehicleKind {
+  return BUS_MODEL.test(`${str(a["id"])} ${str(a["name"])}`) ? "bus" : "truck";
+}
+
+function publishJob(store: StateStore, s: JobSlots): void {
+  store.setConfig("job", s.bus ?? s.cargo);
+  const t = store.state.config.truck;
+  const kind: VehicleKind = s.bus ? "bus" : s.modelKind;
+  if (t && t.kind !== kind) store.setConfig("truck", { ...t, kind });
+}
+
 export function applyConfig(store: StateStore, cfg: ipc.IpcConfig): void {
   const a = cfg.attrs as Record<string, V> | null;
-  if (cfg.id === "job") store.setConfig("job", a ? mapJob(a) : null);
-  else if (cfg.id === "truck") store.setConfig("truck", a ? mapTruck(a) : null);
-  else if (cfg.id === "trailer" || cfg.id.startsWith("trailer.")) {
+  const s = slotsOf(store);
+  if (cfg.id === "job") {
+    s.cargo = a ? mapJob(a) : null;
+    publishJob(store, s);
+  } else if (cfg.id === "bus_job") {
+    s.bus = a && Object.keys(a).length ? mapBusJob(cfg.attrs!) : null;
+    publishJob(store, s);
+  } else if (cfg.id === "truck") {
+    s.modelKind = a ? vehicleKindOf(a) : "truck";
+    store.setConfig("truck", a ? { ...mapTruck(a), kind: s.bus ? "bus" : s.modelKind } : null);
+  } else if (cfg.id === "trailer" || cfg.id.startsWith("trailer.")) {
     const index = cfg.id === "trailer" ? 0 : Number(cfg.id.split(".")[1]);
     const list: ConfigState["trailers"] = store.state.config.trailers.filter((t) => t.index !== index);
     if (a) list.push(mapTrailer(index, a));
@@ -155,6 +193,144 @@ function mapJob(a: Record<string, V>): JobConfig {
     special: bool(a["special.job"]),
     cargoLoaded: bool(a["is.cargo.loaded"]),
   };
+}
+
+/** Atrybut jako wartość prosta (wektory/tablice jako JSON). */
+function plain(v: V | V[]): string | number | boolean {
+  return typeof v === "object" ? JSON.stringify(v) : v;
+}
+
+/**
+ * `bus_job` → JobConfig `kind: "bus"`. SCS nie opisało atrybutów w SDK; format odczytany z gry 1.62:
+ *   bus.stages.count, bus.stages.current, income, planned_distance.km, bus_job.market,
+ *   tablice per etap: source_stop.{id,name,type,departure_time.planned|actual,entering_passengers.planned|actual},
+ *   destination_stop.{id,name,type,arrival_time.planned|actual,leaving_passengers.planned|actual}.
+ * Źródło/cel zlecenia = przystanki bieżącego etapu (trasa GPS prowadzi do następnego przystanku).
+ * Bez tablic (inna wersja gry) — te same nazwy co `job` + szukanie po fragmentach nazw. Komplet atrybutów
+ * zostaje w `bus.raw` (Diagnostyka, `sdk-discovery.jsonl`).
+ */
+export function mapBusJob(attrs: Record<string, V | V[]>): JobConfig {
+  const a: Record<string, V> = {};
+  const raw: BusJobInfo["raw"] = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    raw[k] = plain(v);
+    a[k] = Array.isArray(v) ? (v[0] as V) : v;
+  }
+  const list = (k: string): V[] => {
+    const v = attrs[k];
+    return v === undefined ? [] : Array.isArray(v) ? v : [v];
+  };
+  const at = (k: string, i: number): V | undefined => list(k)[i];
+  const numAt = (k: string, i: number): number | null => {
+    const v = at(k, i);
+    return typeof v === "number" ? v : null;
+  };
+  const stop = (side: "source_stop" | "destination_stop", i: number): BusStop => ({
+    id: str(at(`${side}.id`, i)),
+    name: str(at(`${side}.name`, i)) || str(at(`${side}.id`, i)),
+    type: str(at(`${side}.type`, i)),
+  });
+  const count = Math.max(num(a["bus.stages.count"]), list("source_stop.id").length, list("destination_stop.id").length);
+  const stages: BusStage[] = [];
+  for (let i = 0; i < count; i++) {
+    stages.push({
+      from: stop("source_stop", i),
+      to: stop("destination_stop", i),
+      departPlanned: numAt("source_stop.departure_time.planned", i),
+      departActual: numAt("source_stop.departure_time.actual", i),
+      arrivePlanned: numAt("destination_stop.arrival_time.planned", i),
+      arriveActual: numAt("destination_stop.arrival_time.actual", i),
+      boardingPlanned: numAt("source_stop.entering_passengers.planned", i),
+      boardingActual: numAt("source_stop.entering_passengers.actual", i),
+      alightingPlanned: numAt("destination_stop.leaving_passengers.planned", i),
+      alightingActual: numAt("destination_stop.leaving_passengers.actual", i),
+    });
+  }
+  const current = Math.min(Math.max(0, Math.trunc(num(a["bus.stages.current"]))), Math.max(0, count - 1));
+  const market = str(a["bus_job.market"]) || str(a["job.market"]);
+  const income = num(a["income"]);
+  const plannedDistanceKm = num(a["planned_distance.km"]);
+
+  if (stages.length) {
+    const st = stages[current]!;
+    const place = (s: BusStop) => ({ city: s.name, cityId: s.id, company: "", companyId: "" });
+    return {
+      kind: "bus",
+      cargo: "Pasażerowie",
+      cargoId: "",
+      mass: 0,
+      income,
+      deliveryTime: st.arrivePlanned,
+      plannedDistanceKm,
+      source: place(st.from),
+      destination: place(st.to),
+      market,
+      special: false,
+      cargoLoaded: true,
+      bus: { passengers: onBoard(stages, current), capacity: null, stops: stages.length + 1, stages, current, market, raw },
+    };
+  }
+
+  // inny format (bez tablic etapów): nazwy jak w `job` + szukanie po fragmentach
+  const keys = Object.keys(a);
+  const numBy = (re: RegExp, not?: RegExp): number | null => {
+    const k = keys.find((x) => re.test(x) && !not?.test(x) && typeof a[x] === "number");
+    return k ? (a[k] as number) : null;
+  };
+  const strBy = (re: RegExp): string => {
+    const k = keys.find((x) => re.test(x) && typeof a[x] === "string" && a[x] !== "");
+    return k ? (a[k] as string) : "";
+  };
+  const base = mapJob(a);
+  const fill = (p: JobConfig["source"], side: "source" | "destination", alt: string) => ({
+    city: p.city || strBy(new RegExp(`(${side}|${alt}).*city(?!.*id)`, "i")),
+    cityId: p.cityId || strBy(new RegExp(`(${side}|${alt}).*city.*id`, "i")),
+    company: p.company || strBy(new RegExp(`(${side}|${alt}).*(company|station|stop)(?!.*id)`, "i")),
+    companyId: p.companyId || strBy(new RegExp(`(${side}|${alt}).*(company|station|stop).*id`, "i")),
+  });
+  return {
+    ...base,
+    kind: "bus",
+    cargo: base.cargo || "Pasażerowie",
+    source: fill(base.source, "source", "start|from|origin"),
+    destination: fill(base.destination, "destination", "target|to|end"),
+    income: base.income || (numBy(/income|revenue|reward|pay/i) ?? 0),
+    plannedDistanceKm: base.plannedDistanceKm || (numBy(/distance/i) ?? 0),
+    market: base.market || market,
+    // „nie załadowano” ma sens tylko, gdy gra to podaje
+    cargoLoaded: "is.cargo.loaded" in a ? base.cargoLoaded : true,
+    bus: {
+      passengers: numBy(/passeng/i, /capac|max|seat|limit/i),
+      capacity: numBy(/capac|seat|max.*passeng|passeng.*(max|limit)/i),
+      stops: numBy(/stop/i, /id$/i),
+      stages: [],
+      current: 0,
+      market,
+      raw,
+    },
+  };
+}
+
+/**
+ * Pasażerowie na pokładzie w etapie `current`: wsiadający na przystankach, z których już odjechano
+ * (bieżący etap — dopiero po odjeździe), minus wysiadający na przystankach już minionych. Faktyczne liczby
+ * mają pierwszeństwo przed planem.
+ */
+export function onBoard(stages: readonly BusStage[], current: number): number | null {
+  let n = 0;
+  let known = false;
+  for (let i = 0; i <= current && i < stages.length; i++) {
+    const s = stages[i]!;
+    if (i < current || s.departActual !== null) {
+      const b = s.boardingActual ?? s.boardingPlanned;
+      if (b !== null) {
+        n += b;
+        known = true;
+      }
+    }
+    if (i < current || s.arriveActual !== null) n -= s.alightingActual ?? s.alightingPlanned ?? 0;
+  }
+  return known ? Math.max(0, n) : null;
 }
 
 function mapTruck(a: Record<string, V>): TruckConfig {

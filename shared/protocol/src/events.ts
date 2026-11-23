@@ -12,8 +12,10 @@ export type GameEvent =
       deliveryTime: number;
       autoParked: boolean;
       autoLoaded: boolean;
+      /** `bus` = koniec kursu autobusowego (`bus_job.delivered`); brak = zlecenie z ładunkiem */
+      jobKind?: "cargo" | "bus";
     }
-  | { kind: "job.cancelled"; penalty: number }
+  | { kind: "job.cancelled"; penalty: number; jobKind?: "cargo" | "bus" }
   | { kind: "player.fined"; offence: string; amount: number }
   | { kind: "player.tollgate"; amount: number }
   | { kind: "player.ferry"; source: string; target: string; amount: number }

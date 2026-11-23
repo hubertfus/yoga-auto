@@ -11,7 +11,8 @@ import type { RouteInfo } from "@yoga-auto/protocol";
 import { springs } from "@yoga-auto/design-tokens";
 import { perfStore } from "@yoga-auto/glass-ui";
 import { client } from "../../core/client.ts";
-import { store, useFastValue } from "../../core/store.ts";
+import { store, useConfig, useFastValue } from "../../core/store.ts";
+import { useStopPoints, type StopPoint } from "../route/bus.tsx";
 import {
   DEFAULT_PROJECTION,
   gameToLonLat,
@@ -21,6 +22,8 @@ import {
   type ProjectionConfig,
 } from "./projection.ts";
 import { normalizeBearing, springStep, unwrapAngle, type Spring1D } from "./spring.ts";
+export { loadViewMode, type MapViewMode } from "./camera.ts";
+import { cameraBearing, cameraStep, loadViewMode, saveViewMode, TILT_PITCH, TILT_SHIFT, type MapViewMode } from "./camera.ts";
 import { attachImageLoader } from "./icons.ts";
 import { buildStyle, readMapColors, type MapColors } from "./style.ts";
 import { createTierDrop } from "./tierDrop.ts";
@@ -48,6 +51,8 @@ export interface MapControls {
   zoomBy(delta: number): void;
   recenter(): void;
   toggleHeadingUp(): void;
+  /** widok 3D: mapa pochylona, pojazd niżej na ekranie (więcej drogi przed nim) */
+  toggleTilt(): void;
 }
 
 export interface MapViewProps {
@@ -57,10 +62,13 @@ export interface MapViewProps {
   /** wywoływane przy zmianie trybu follow (gest przeciągnięcia wyłącza follow) */
   onFollowChange?: (follow: boolean) => void;
   onHeadingUpChange?: (v: boolean) => void;
+  onTiltChange?: (v: boolean) => void;
   /** przytrzymanie palca w miejscu (wybór celu): punkt w metrach gry + pozycja na ekranie względem mapy */
   onLongPress?: (p: { x: number; z: number; left: number; top: number }) => void;
   /** uchwyt do przycisków zewnętrznych */
   controlsRef?: { current: MapControls | null };
+  /** klucz zapamiętania zoomu i trybu widoku (localStorage), np. `home`, `nav`; brak = zawsze `zoom`, 2D, północ w górę */
+  zoomKey?: string;
   className?: string;
 }
 
@@ -78,6 +86,17 @@ export function routeGeoJson(route: RouteInfo | null, cfg: ProjectionConfig): Ge
       { type: "Feature", properties: { kind: "line" }, geometry: { type: "LineString", coordinates: coords } },
       { type: "Feature", properties: { kind: "dest" }, geometry: { type: "Point", coordinates: coords.at(-1)! } },
     ],
+  };
+}
+
+/** GeoJSON przystanków kursu autobusowego (punkty z `state`: done/here/next/later). */
+export function stopsGeoJson(stops: readonly StopPoint[], cfg: ProjectionConfig): GeoJSONSourceData {
+  return {
+    type: "FeatureCollection",
+    features: stops.map((s) => {
+      const { lon, lat } = gameToLonLat(s.x, s.z, cfg);
+      return { type: "Feature", properties: { state: s.state, name: s.name }, geometry: { type: "Point", coordinates: [lon, lat] } };
+    }),
   };
 }
 
@@ -103,6 +122,19 @@ function addRouteLayers(map: MlMap, colors: MapColors): void {
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": colors.accent, "line-width": w(2.6) as never },
   }, before);
+  // przystanki kursu autobusowego: miniony szary, następny/bieżący w kolorze akcentu, dalsze obwódką
+  map.addSource("stops", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({
+    id: "bus-stops",
+    type: "circle",
+    source: "stops",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, ["match", ["get", "state"], "next", 6, 4], 12, ["match", ["get", "state"], "next", 11, 8]] as never,
+      "circle-color": ["match", ["get", "state"], "done", colors.labelDim, "later", colors.bg, colors.accent] as never,
+      "circle-stroke-color": ["match", ["get", "state"], "done", colors.bg, "later", colors.accent, "#fff"] as never,
+      "circle-stroke-width": ["match", ["get", "state"], "next", 3, 2] as never,
+    },
+  });
   map.addLayer({
     id: "route-dest",
     type: "circle",
@@ -121,15 +153,39 @@ const SPRING = springs.smooth;
 const LONG_PRESS_MS = 600;
 const SNAP_M = 400; // skok większy niż to (teleport/zmiana sesji) = bez animacji
 const END_DELAY_MS = 350;
+const MIN_ZOOM = 3;
+const MAX_ZOOM = 18;
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+/** Zapamiętany zoom widoku (per klucz); błędy storage (tryb prywatny itp.) ignorujemy. */
+export function loadZoom(key: string | undefined, fallback: number): number {
+  if (!key) return fallback;
+  try {
+    const v = Number(localStorage.getItem(`yoga.map.zoom.${key}`));
+    return Number.isFinite(v) && v >= MIN_ZOOM && v <= MAX_ZOOM ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function saveZoom(key: string | undefined, z: number): void {
+  if (!key) return;
+  try {
+    localStorage.setItem(`yoga.map.zoom.${key}`, z.toFixed(2));
+  } catch {
+    /* brak storage — zoom tylko do końca widoku */
+  }
+}
 
 export function MapView({
   interactive = true,
   zoom = 13,
   onFollowChange,
   onHeadingUpChange,
+  onTiltChange,
   controlsRef,
   className,
   onLongPress,
+  zoomKey,
 }: MapViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const [probe, setProbe] = useState<TileProbe | null>(null);
@@ -137,10 +193,16 @@ export function MapView({
   const projRef = useRef<ProjectionConfig>(DEFAULT_PROJECTION);
   const target = useRef<{ lon: number; lat: number; bearing: number } | null>(null);
   const follow = useRef(true);
-  const headingUp = useRef(false);
-  const cb = useRef({ onFollowChange, onHeadingUpChange, onLongPress });
-  cb.current = { onFollowChange, onHeadingUpChange, onLongPress };
+  const mode = useRef<MapViewMode>(loadViewMode(zoomKey));
+  const cb = useRef({ onFollowChange, onHeadingUpChange, onTiltChange, onLongPress });
+  cb.current = { onFollowChange, onHeadingUpChange, onTiltChange, onLongPress };
   const snapNext = useRef(true);
+  // przystanki kursu autobusowego (pozycje z route-places.json); rysowane po załadowaniu stylu
+  const stops = useStopPoints(useConfig((c) => c.job));
+  const applyStops = useRef<(s: readonly StopPoint[]) => void>(() => {});
+  const stopsNow = useRef(stops);
+  stopsNow.current = stops;
+  useEffect(() => applyStops.current(stops), [stops]);
 
   usePlacementSubscription();
 
@@ -243,19 +305,26 @@ export function MapView({
       maplibregl.addProtocol("pmtiles", pmtilesProtocol().tile);
       const t0 = target.current;
       const colors = readMapColors();
+      // tryb startowy bez animacji (widok od razu tak, jak go zostawiono)
+      let cam = { blend: mode.current.headingUp ? 1 : 0, pitch: mode.current.tilt ? TILT_PITCH : 0 };
+      const shift = () => ({ top: el.clientHeight * TILT_SHIFT * (cam.pitch / TILT_PITCH), bottom: 0, left: 0, right: 0 });
       map = new maplibregl.Map({
         container: el,
         style: buildStyle(colors, probe.tiles),
         center: t0 ? [t0.lon, t0.lat] : [probe.tiles ? 10 : 15, 50],
-        zoom,
-        maxZoom: 18,
+        zoom: loadZoom(zoomKey, zoom),
+        pitch: cam.pitch,
+        bearing: t0 ? cameraBearing(t0.bearing, cam.blend) : 0,
+        maxZoom: MAX_ZOOM,
         attributionControl: false,
         interactive,
         dragRotate: false,
         pitchWithRotate: false,
+        touchPitch: false, // pochylenie tylko przyciskiem 3D (gest walczyłby z animacją kamery)
         fadeDuration: 0,
       });
       map.touchZoomRotate.disableRotation();
+      map.setPadding(shift());
       attachImageLoader(map, colors);
       (window as unknown as { __map?: MlMap }).__map = map;
 
@@ -267,11 +336,16 @@ export function MapView({
         shownRoute = store.route;
         (map.getSource("route") as GeoJSONSource | undefined)?.setData(routeGeoJson(shownRoute, projRef.current));
       };
+      applyStops.current = (s) => {
+        if (!map || !styleReady) return;
+        (map.getSource("stops") as GeoJSONSource | undefined)?.setData(stopsGeoJson(s, projRef.current));
+      };
       map.on("load", () => {
         if (!map) return;
         addRouteLayers(map, colors);
         styleReady = true;
         applyRoute();
+        applyStops.current(stopsNow.current);
       });
       unsubRoute = store.subscribe(() => applyRoute());
 
@@ -299,18 +373,31 @@ export function MapView({
         for (const ev of ["moveend", "zoomend", "dragend"] as const) map.on(ev, end);
       }
 
+      // zoom z przycisków animujemy w pętli rAF razem z kamerą (easeTo przerywałby jumpTo trybu follow)
+      let zoomTarget: number | null = null;
+      map.on("zoomend", () => {
+        if (map && zoomTarget === null) saveZoom(zoomKey, map.getZoom());
+      });
       if (controlsRef) {
         controlsRef.current = {
-          zoomBy: (d) => map?.easeTo({ zoom: Math.min(18, Math.max(3, map.getZoom() + d)), duration: 200 }),
+          zoomBy: (d) => {
+            if (!map) return;
+            zoomTarget = clampZoom((zoomTarget ?? map.getZoom()) + d);
+          },
           recenter: () => {
             follow.current = true;
             snapNext.current = true;
             cb.current.onFollowChange?.(true);
           },
           toggleHeadingUp: () => {
-            headingUp.current = !headingUp.current;
-            if (!headingUp.current) map?.setBearing(0);
-            cb.current.onHeadingUpChange?.(headingUp.current);
+            mode.current = { ...mode.current, headingUp: !mode.current.headingUp };
+            saveViewMode(zoomKey, mode.current);
+            cb.current.onHeadingUpChange?.(mode.current.headingUp);
+          },
+          toggleTilt: () => {
+            mode.current = { ...mode.current, tilt: !mode.current.tilt };
+            saveViewMode(zoomKey, mode.current);
+            cb.current.onTiltChange?.(mode.current.tilt);
           },
         };
       }
@@ -323,8 +410,25 @@ export function MapView({
         raf = requestAnimationFrame(tick);
         const dt = Math.min(0.1, (now - last) / 1000);
         last = now;
+        let nextZoom: number | undefined;
+        if (zoomTarget !== null && map && pointers.size === 0) {
+          const z = map.getZoom();
+          const dz = zoomTarget - z;
+          nextZoom = Math.abs(dz) < 0.01 ? zoomTarget : z + dz * Math.min(1, dt * 12);
+          if (nextZoom === zoomTarget) {
+            zoomTarget = null;
+            saveZoom(zoomKey, nextZoom);
+          }
+        }
         const tg = target.current;
-        if (!tg || !map || !marker) return;
+        if (!map) return;
+        const prevCam = cam;
+        cam = cameraStep(cam, mode.current, dt);
+        const camMoving = cam.blend !== prevCam.blend || cam.pitch !== prevCam.pitch;
+        if (!tg || !marker) {
+          if (nextZoom !== undefined || camMoving) map.jumpTo({ ...(nextZoom !== undefined ? { zoom: nextZoom } : {}), pitch: cam.pitch, padding: shift() });
+          return;
+        }
         if (snapNext.current) {
           lon = { x: tg.lon, v: 0 };
           lat = { x: tg.lat, v: 0 };
@@ -338,8 +442,15 @@ export function MapView({
         const b = normalizeBearing(brg.x);
         marker.setLngLat([lon.x, lat.x]);
         marker.setRotation(b);
-        if ((follow.current || !interactive) && pointers.size === 0) {
-          map.jumpTo({ center: [lon.x, lat.x], ...(headingUp.current ? { bearing: b } : {}) });
+        const zoomPart = nextZoom !== undefined ? { zoom: nextZoom } : {};
+        if (pointers.size > 0) return;
+        if (follow.current || !interactive) {
+          // za pojazdem: obrót wg kursu (płynne przejście blend), pochylenie i pojazd niżej w 3D
+          map.jumpTo({ center: [lon.x, lat.x], ...zoomPart, bearing: cameraBearing(b, cam.blend), pitch: cam.pitch, padding: shift() });
+        } else if (nextZoom !== undefined || camMoving) {
+          // widok swobodny: nie przesuwamy środka; wyłączenie „kierunku w górę” wraca do północy
+          const bearing = mode.current.headingUp ? map.getBearing() : cameraBearing(map.getBearing(), cam.blend);
+          map.jumpTo({ ...zoomPart, bearing, pitch: cam.pitch });
         }
       };
       raf = requestAnimationFrame(tick);
@@ -347,6 +458,7 @@ export function MapView({
 
     return () => {
       disposed = true;
+      applyStops.current = () => {};
       unsubRoute();
       cancelAnimationFrame(raf);
       clearTimeout(endTimer);

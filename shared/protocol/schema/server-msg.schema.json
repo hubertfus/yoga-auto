@@ -792,6 +792,10 @@
     "TruckConfig": {
       "type": "object",
       "properties": {
+        "kind": {
+          "$ref": "#/definitions/VehicleKind",
+          "description": "Rodzaj pojazdu: `bus` = autokar (DLC z kursami autobusowymi, SDK 1.20+ / ETS2 1.61+), inaczej `truck`. Ustalany z modelu pojazdu albo z aktywnego kursu autobusowego (`bus_job`). Brak (stary bridge) = `truck`."
+        },
         "brand": {
           "type": "string"
         },
@@ -856,9 +860,28 @@
         "licensePlate"
       ]
     },
+    "VehicleKind": {
+      "type": "string",
+      "enum": [
+        "truck",
+        "bus"
+      ]
+    },
     "JobConfig": {
       "type": "object",
       "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "cargo",
+            "bus"
+          ],
+          "description": "`bus` = kurs autobusowy (konfiguracja SDK `bus_job`), `cargo` = zlecenie z ładunkiem. Brak = `cargo`."
+        },
+        "bus": {
+          "$ref": "#/definitions/BusJobInfo",
+          "description": "szczegóły kursu autobusowego (tylko `kind: \"bus\"`)"
+        },
         "cargo": {
           "type": "string"
         },
@@ -912,6 +935,164 @@
         "market",
         "special",
         "cargoLoaded"
+      ]
+    },
+    "BusJobInfo": {
+      "type": "object",
+      "properties": {
+        "passengers": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "pasażerów na pokładzie (z planu i faktycznych wsiadających/wysiadających do bieżącego etapu)"
+        },
+        "capacity": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "miejsc w autobusie (gra 1.62 nie podaje)"
+        },
+        "stops": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "przystanków w kursie (z pierwszym)"
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BusStage"
+          },
+          "description": "etapy kursu: przystanek → przystanek"
+        },
+        "current": {
+          "type": "number",
+          "description": "indeks bieżącego etapu (`bus.stages.current`)"
+        },
+        "market": {
+          "type": "string",
+          "description": "np. `quick_job`"
+        },
+        "raw": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "description": "wszystkie atrybuty `bus_job` z gry (tablice/wektory jako JSON)"
+        }
+      },
+      "required": [
+        "passengers",
+        "capacity",
+        "stops",
+        "stages",
+        "current",
+        "market",
+        "raw"
+      ],
+      "description": "Kurs autobusowy (konfiguracja SDK `bus_job`, ETS2 1.61+). SCS nie opisało atrybutów w SDK; format odczytany z gry 1.62: etapy `bus.stages.count`/`bus.stages.current` i tablice per etap `source_stop.*` / `destination_stop.*` (id i nazwa miasta, planowane/faktyczne godziny, wsiadający/wysiadający). `raw` niesie wszystkie atrybuty bez zmian."
+    },
+    "BusStage": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/BusStop"
+        },
+        "to": {
+          "$ref": "#/definitions/BusStop"
+        },
+        "departPlanned": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "minuty gry; null = gra nie podała"
+        },
+        "departActual": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "arrivePlanned": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "arriveActual": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "boardingPlanned": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "wsiadających na przystanku początkowym etapu (plan / faktycznie)"
+        },
+        "boardingActual": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "alightingPlanned": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "wysiadających na przystanku końcowym etapu (plan / faktycznie)"
+        },
+        "alightingActual": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "departPlanned",
+        "departActual",
+        "arrivePlanned",
+        "arriveActual",
+        "boardingPlanned",
+        "boardingActual",
+        "alightingPlanned",
+        "alightingActual"
+      ]
+    },
+    "BusStop": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "token miasta (np. `budapest`)"
+        },
+        "name": {
+          "type": "string",
+          "description": "nazwa w języku gry"
+        },
+        "type": {
+          "type": "string",
+          "description": "rodzaj przystanku z gry (1.62: `city`)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
       ]
     },
     "Place": {
@@ -1645,6 +1826,14 @@
             },
             "autoLoaded": {
               "type": "boolean"
+            },
+            "jobKind": {
+              "type": "string",
+              "enum": [
+                "cargo",
+                "bus"
+              ],
+              "description": "`bus` = koniec kursu autobusowego (`bus_job.delivered`); brak = zlecenie z ładunkiem"
             }
           },
           "required": [
@@ -1667,6 +1856,13 @@
             },
             "penalty": {
               "type": "number"
+            },
+            "jobKind": {
+              "type": "string",
+              "enum": [
+                "cargo",
+                "bus"
+              ]
             }
           },
           "required": [

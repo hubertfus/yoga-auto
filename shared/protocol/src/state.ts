@@ -141,6 +141,11 @@ export interface ConfigState {
 }
 
 export interface TruckConfig {
+  /**
+   * Rodzaj pojazdu: `bus` = autokar (DLC z kursami autobusowymi, SDK 1.20+ / ETS2 1.61+), inaczej `truck`.
+   * Ustalany z modelu pojazdu albo z aktywnego kursu autobusowego (`bus_job`). Brak (stary bridge) = `truck`.
+   */
+  kind?: VehicleKind;
   brand: string;
   brandId: string;
   name: string;
@@ -158,7 +163,13 @@ export interface TruckConfig {
   licensePlate: string | null;
 }
 
+export type VehicleKind = "truck" | "bus";
+
 export interface JobConfig {
+  /** `bus` = kurs autobusowy (konfiguracja SDK `bus_job`), `cargo` = zlecenie z ładunkiem. Brak = `cargo`. */
+  kind?: "cargo" | "bus";
+  /** szczegóły kursu autobusowego (tylko `kind: "bus"`) */
+  bus?: BusJobInfo;
   cargo: string;
   cargoId: string;
   /** kg */
@@ -174,6 +185,53 @@ export interface JobConfig {
   market: string;
   special: boolean;
   cargoLoaded: boolean;
+}
+
+/**
+ * Kurs autobusowy (konfiguracja SDK `bus_job`, ETS2 1.61+). SCS nie opisało atrybutów w SDK; format odczytany
+ * z gry 1.62: etapy `bus.stages.count`/`bus.stages.current` i tablice per etap `source_stop.*` / `destination_stop.*`
+ * (id i nazwa miasta, planowane/faktyczne godziny, wsiadający/wysiadający). `raw` niesie wszystkie atrybuty bez zmian.
+ */
+export interface BusJobInfo {
+  /** pasażerów na pokładzie (z planu i faktycznych wsiadających/wysiadających do bieżącego etapu) */
+  passengers: number | null;
+  /** miejsc w autobusie (gra 1.62 nie podaje) */
+  capacity: number | null;
+  /** przystanków w kursie (z pierwszym) */
+  stops: number | null;
+  /** etapy kursu: przystanek → przystanek */
+  stages: BusStage[];
+  /** indeks bieżącego etapu (`bus.stages.current`) */
+  current: number;
+  /** np. `quick_job` */
+  market: string;
+  /** wszystkie atrybuty `bus_job` z gry (tablice/wektory jako JSON) */
+  raw: Record<string, string | number | boolean>;
+}
+
+export interface BusStop {
+  /** token miasta (np. `budapest`) */
+  id: string;
+  /** nazwa w języku gry */
+  name: string;
+  /** rodzaj przystanku z gry (1.62: `city`) */
+  type: string;
+}
+
+export interface BusStage {
+  from: BusStop;
+  to: BusStop;
+  /** minuty gry; null = gra nie podała */
+  departPlanned: number | null;
+  departActual: number | null;
+  arrivePlanned: number | null;
+  arriveActual: number | null;
+  /** wsiadających na przystanku początkowym etapu (plan / faktycznie) */
+  boardingPlanned: number | null;
+  boardingActual: number | null;
+  /** wysiadających na przystanku końcowym etapu (plan / faktycznie) */
+  alightingPlanned: number | null;
+  alightingActual: number | null;
 }
 
 export interface Place {

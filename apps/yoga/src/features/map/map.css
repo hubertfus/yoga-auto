@@ -48,3 +48,9 @@
 .map-pick__actions { display: flex; gap: var(--s-2); }
 .map-route-overlay .rt-target { margin-bottom: var(--s-2); }
 .map-route-overlay { pointer-events: auto; }
+
+/* zoom −/+ na mapach bez gestów (kafel Home, tło nawigacji) */
+.map-zoom { position: absolute; z-index: 3; display: flex; gap: var(--s-2); }
+.map-zoom--widget { right: var(--s-2); bottom: var(--s-2); }
+/* nawigacja: lewy dół środkowego pasa (między panelem trasy 440 px a panelem zlecenia) */
+.map-zoom--nav { left: calc(var(--s-2) + 440px + var(--s-4) + var(--s-3)); bottom: calc(var(--s-2) + var(--s-3)); gap: var(--s-3); }

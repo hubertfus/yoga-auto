@@ -1,6 +1,7 @@
 /**
  * RouteService: utrzymuje bieżącą trasę GPS.
- * Cel: punkt wybrany ręcznie na tablecie (`route.set`) albo firma docelowa zlecenia. Ręczny cel ma pierwszeństwo,
+ * Cel: punkt wybrany ręcznie na tablecie (`route.set`), firma docelowa zlecenia albo — przy kursie autobusowym —
+ * centrum miasta następnego przystanku (dworców nie ma w danych mapy). Ręczny cel ma pierwszeństwo,
  * ale nowe zlecenie go zastępuje (gra nie udostępnia celu ustawionego w jej GPS, więc bez zlecenia cel wybiera się na tablecie).
  * - nowy cel → liczy trasę od bieżącej pozycji,
  * - zjazd z trasy (> OFF_ROUTE_M przez OFF_ROUTE_MS) → przelicza (nie częściej niż co REPLAN_MIN_MS),
@@ -37,6 +38,21 @@ export function goalsNear(g: RouteGraph, x: number, z: number): number[] {
   return [];
 }
 
+/** Środki miast po tokenie (z `route-places.json`): cele przystanków kursów autobusowych. */
+export type CityCenters = ReadonlyMap<string, { x: number; z: number }>;
+
+/** Wczytuje środki miast z `route-places.json` (krotki [nazwa, x, z, kraj, token]); stare pliki bez tokenów = pusto. */
+export function cityCentersFrom(places: unknown): Map<string, { x: number; z: number }> {
+  const out = new Map<string, { x: number; z: number }>();
+  const cities = (places as { cities?: unknown } | null)?.cities;
+  if (!Array.isArray(cities)) return out;
+  for (const c of cities) {
+    if (Array.isArray(c) && typeof c[4] === "string" && typeof c[1] === "number" && typeof c[2] === "number")
+      out.set(c[4], { x: c[1], z: c[2] });
+  }
+  return out;
+}
+
 export class RouteService {
   route: RouteInfo | null = null;
   /** cel wybrany na tablecie */
@@ -49,11 +65,17 @@ export class RouteService {
   private lastPlanAt = -Infinity;
   private missingLogged = new Set<string>();
   private readonly graph: RouteGraph;
+  private readonly cities: CityCenters;
   private readonly log: (level: "debug" | "info" | "warn" | "error", msg: string) => void;
 
-  constructor(graph: RouteGraph, log: (level: "debug" | "info" | "warn" | "error", msg: string) => void = () => {}) {
+  constructor(
+    graph: RouteGraph,
+    log: (level: "debug" | "info" | "warn" | "error", msg: string) => void = () => {},
+    cities: CityCenters = new Map(),
+  ) {
     this.graph = graph;
     this.log = log;
+    this.cities = cities;
   }
 
   /** Ręczny cel (null = zakończ nawigację do punktu). Trasa liczy się przy najbliższym `update()`. */
@@ -81,6 +103,20 @@ export class RouteService {
       };
     }
     if (!job || !jobKey) return null;
+    if (job.kind === "bus") {
+      // przystanek = miasto (gra podaje token miasta); prowadzimy do jego centrum, dokładne miejsce zna GPS gry
+      const c = this.cities.get(job.destination.cityId);
+      if (!c && !this.missingLogged.has(jobKey)) {
+        this.missingLogged.add(jobKey);
+        this.log("warn", `route: brak miasta ${job.destination.cityId} w route-places.json (npm run map:graph -- --places-only)`);
+      }
+      return {
+        key: `b:${job.destination.cityId}`,
+        goals: c ? goalsNear(this.graph, c.x, c.z) : [],
+        to: { city: job.destination.city, company: "przystanek" },
+        manual: false,
+      };
+    }
     const goals = companyNodes(this.graph, job.destination.cityId, job.destination.companyId);
     if (!goals.length && !this.missingLogged.has(jobKey)) {
       this.missingLogged.add(jobKey);

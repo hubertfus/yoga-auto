@@ -6,6 +6,7 @@ import type { Alert, AlertCode, GameEvent, GameEventKind } from "@yoga-auto/prot
 import { Icon } from "@yoga-auto/glass-ui";
 import { registerAlertPresenter, registerEventPresenter, type AlertPresenter, type EventPresenter, type ToastContent } from "../../core/registry.ts";
 import { getSettings } from "../../core/settings.ts";
+import { isBusJob, passengersText } from "../_shared/job.ts";
 import {
   formatDistance,
   formatKm,
@@ -204,16 +205,27 @@ export const EVENT_PRESENTERS: { [K in GameEventKind]?: EventPresenter<K> } = {
       e.cargoDamage > 0 ? `uszkodzenie ładunku ${formatPercent(e.cargoDamage, true)}` : "bez uszkodzeń",
       e.earnedXp ? `+${e.earnedXp} XP` : null,
     ].filter(Boolean);
-    return { title: "Dostawa zrealizowana", body: bits.join(" · "), icon: icon("check"), level: "info", duration: 9000 };
+    if (e.jobKind === "bus") bits.splice(2, 1); // kurs autobusowy: bez ładunku
+    return {
+      title: e.jobKind === "bus" ? "Kurs zakończony" : "Dostawa zrealizowana",
+      body: bits.join(" · "),
+      icon: icon("check"),
+      level: "info",
+      duration: 9000,
+    };
   },
-  "job.started": (e) => ({
-    title: "Nowe zlecenie",
-    body: `${e.job.source.city} → ${e.job.destination.city} · ${e.job.cargo} · ${formatMoney(e.job.income)}`,
-    icon: icon("package"),
-    level: "info",
-  }),
+  "job.started": (e) => {
+    const bus = isBusJob(e.job);
+    const what = bus ? (passengersText(e.job) ?? "pasażerowie") : e.job.cargo;
+    return {
+      title: bus ? "Nowy kurs autobusowy" : "Nowe zlecenie",
+      body: `${e.job.source.city} → ${e.job.destination.city} · ${what} · ${formatMoney(e.job.income)}`,
+      icon: icon(bus ? "bus" : "package"),
+      level: "info",
+    };
+  },
   "job.cancelled": (e) => ({
-    title: "Zlecenie anulowane",
+    title: e.jobKind === "bus" ? "Kurs anulowany" : "Zlecenie anulowane",
     body: e.penalty ? `Kara ${formatMoney(e.penalty)}` : undefined,
     icon: icon("x"),
     level: e.penalty ? "warning" : "info",

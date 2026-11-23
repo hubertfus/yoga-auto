@@ -64,3 +64,23 @@
 
 .rt-target { display: flex; align-items: center; gap: var(--s-2); min-width: 0; color: var(--text-2); font: var(--t-label); }
 .rt-target__name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-1); }
+
+/* kurs autobusowy: lista przystanków */
+.bus-stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.bus-stop { position: relative; display: grid; grid-template-columns: 18px 1fr auto; gap: var(--s-3); align-items: start; padding: 6px 0; }
+.bus-stop:not(:last-child)::before {
+  content: ""; position: absolute; left: 8px; top: 20px; bottom: -6px; width: 2px;
+  background: color-mix(in oklch, var(--text-1) 18%, transparent);
+}
+.bus-stop__dot { width: 12px; height: 12px; margin: 4px 0 0 3px; border-radius: 50%; border: 2px solid var(--text-3); background: var(--bg-0); position: relative; z-index: 1; }
+.bus-stop[data-state="done"] { color: var(--text-3); }
+.bus-stop[data-state="done"] .bus-stop__dot { background: var(--text-3); border-color: var(--text-3); }
+.bus-stop[data-state="here"] .bus-stop__dot, .bus-stop[data-state="next"] .bus-stop__dot { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 30%, transparent); }
+.bus-stop[data-state="next"] .bus-stop__name, .bus-stop[data-state="here"] .bus-stop__name { color: var(--text-1); font-weight: 700; }
+.bus-stop__name { font: var(--t-body, inherit); color: var(--text-2); line-height: 1.2; }
+.bus-stop__sub { display: flex; gap: var(--s-2); font: var(--t-caption); color: var(--text-3); }
+.bus-stop__tag { color: var(--accent); }
+.bus-stop__time { display: flex; flex-direction: column; align-items: flex-end; font: var(--t-caption); color: var(--text-2); white-space: nowrap; }
+.bus-stop__late[data-tone="crit"] { color: var(--crit); }
+.bus-stop__late[data-tone="ok"] { color: var(--ok, var(--accent)); }
+.bus-stop__dep { color: var(--text-3); }

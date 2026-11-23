@@ -14,8 +14,8 @@ import {
   type TelemetrySource,
 } from "@yoga-auto/protocol";
 
-export type MockScenario = "highway" | "city-night" | "low-fuel" | "crash" | "job-cycle";
-export const MOCK_SCENARIOS: readonly MockScenario[] = ["highway", "city-night", "low-fuel", "crash", "job-cycle"];
+export type MockScenario = "highway" | "city-night" | "low-fuel" | "crash" | "job-cycle" | "bus";
+export const MOCK_SCENARIOS: readonly MockScenario[] = ["highway", "city-night", "low-fuel", "crash", "job-cycle", "bus"];
 
 export interface MockOptions {
   scenario?: MockScenario;
@@ -99,6 +99,48 @@ const JOB_ATTRS: Record<string, V> = {
   "special.job": false,
 };
 
+/**
+ * Kurs autobusowy (`bus_job`, scenariusz `bus`) w formacie gry 1.62 (odczytanym z `sdk-discovery.jsonl`):
+ * etapy i tablice per etap. Etap 0 (Berlin → Hamburg) zaliczony, jedziemy etapem 1 do Bremy.
+ */
+const T0 = 600 * 60; // ~ pon 10:00 czasu gry mocka
+const BUS_JOB_ATTRS: Record<string, V | V[]> = {
+  "bus.stages.count": 3,
+  "bus.stages.current": 1,
+  income: 5240,
+  "planned_distance.km": 690,
+  "bus_job.market": "quick_job",
+  "source_stop.type": ["city", "city", "city"],
+  "source_stop.id": ["berlin", "hamburg", "bremen"],
+  "source_stop.name": ["Berlin", "Hamburg", "Brema"],
+  "destination_stop.type": ["city", "city", "city"],
+  "destination_stop.id": ["hamburg", "bremen", "amsterdam"],
+  "destination_stop.name": ["Hamburg", "Brema", "Amsterdam"],
+  "source_stop.departure_time.planned": [T0 - 240, T0 + 10, T0 + 140],
+  "source_stop.departure_time.actual": [T0 - 238, T0 + 12],
+  "destination_stop.arrival_time.planned": [T0 - 20, T0 + 125, T0 + 380],
+  "destination_stop.arrival_time.actual": [T0 - 14],
+  "source_stop.entering_passengers.planned": [31, 18, 22],
+  "destination_stop.leaving_passengers.planned": [12, 15, 44],
+};
+
+const COACH_ATTRS: Record<string, V> = {
+  brand_id: "man",
+  brand: "MAN",
+  id: "vehicle.man.lions_coach",
+  name: "Lion's Coach",
+  "fuel.capacity": 480,
+  "fuel.warning.factor": 0.15,
+  "adblue.capacity": 60,
+  "brake.air.pressure.warning": 65,
+  "brake.air.pressure.emergency": 30,
+  "rpm.limit": 2400,
+  "gears.forward": 12,
+  "gears.reverse": 1,
+  "retarder.steps": 5,
+  "license.plate": "B MZ 4711",
+};
+
 const TRUCK_ATTRS: Record<string, V> = {
   brand_id: "scania",
   brand: "Scania",
@@ -150,8 +192,12 @@ export class MockSource implements TelemetrySource {
     if (this.timer) return;
     this.emit({ t: "connected" });
     this.emit(this.hello());
-    this.emit({ t: "cfg", id: "truck", attrs: TRUCK_ATTRS });
-    this.emit({
+    const bus = this.scenario === "bus";
+    this.emit({ t: "cfg", id: "truck", attrs: bus ? COACH_ATTRS : TRUCK_ATTRS });
+    if (bus) {
+      this.emit({ t: "cfg", id: "job", attrs: null });
+      this.emit({ t: "cfg", id: "bus_job", attrs: BUS_JOB_ATTRS });
+    } else this.emit({
       t: "cfg",
       id: "trailer.0",
       attrs: {
@@ -162,7 +208,7 @@ export class MockSource implements TelemetrySource {
         "license.plate": "DW 99887",
       },
     });
-    if (this.sim.job) this.emit({ t: "cfg", id: "job", attrs: JOB_ATTRS });
+    if (this.sim.job && !bus) this.emit({ t: "cfg", id: "job", attrs: JOB_ATTRS });
     this.emit({ t: "input.active", device: "semantical", active: true });
     if (this.manual) return;
     const dt = 1 / this.fps;
@@ -248,7 +294,7 @@ export class MockSource implements TelemetrySource {
       rpm: 650,
       throttle: 0,
       brake: 0,
-      fuel: this.scenario === "low-fuel" ? 0.17 * FUEL_CAP : 0.63 * FUEL_CAP,
+      fuel: (this.scenario === "low-fuel" ? 0.17 : 0.63) * (this.scenario === "bus" ? 480 : FUEL_CAP),
       adblue: 52,
       odometer: 184_233,
       air: 120,
@@ -266,7 +312,7 @@ export class MockSource implements TelemetrySource {
       diffLock: false,
       liftAxle: false,
       trailerLiftAxle: false,
-      trailer: true,
+      trailer: this.scenario !== "bus",
       wear: { engine: 0.02, transmission: 0.015, cabin: 0.01, chassis: 0.03, wheels: 0.02 },
       cargoDamage: 0,
       navDistance: 812_000,

@@ -24,11 +24,13 @@ export interface Place {
   x: number;
   z: number;
   kind: "city" | "company";
+  /** token miasta z gry (np. `budapest`); brak w starych plikach route-places.json */
+  token?: string;
 }
 
 interface PlacesJson {
   v: 1;
-  cities: [string, number, number, string][];
+  cities: [string, number, number, string, string?][];
   companies: [string, string, number, number][];
 }
 
@@ -76,17 +78,19 @@ export const countryName = (token: string): string =>
 let placesPromise: Promise<Place[]> | null = null;
 
 export function loadPlaces(fetchFn: typeof fetch = fetch): Promise<Place[]> {
-  placesPromise ??= fetchFn(withToken("/tiles/route-places.json", getToken()))
+  // no-cache: plik zmienia się przy przebudowie mapy (np. tokeny miast dla przystanków), a /tiles ma długi cache
+  placesPromise ??= fetchFn(withToken("/tiles/route-places.json", getToken()), { cache: "no-cache" })
     .then((r) => (r.ok ? (r.json() as Promise<PlacesJson>) : null))
     .then((j) =>
       j
         ? [
-            ...j.cities.map(([name, x, z, country]): Place => ({
+            ...j.cities.map(([name, x, z, country, token]): Place => ({
               name,
               sub: countryName(country),
               x,
               z,
               kind: "city",
+              ...(token ? { token } : {}),
             })),
             ...j.companies.map(([name, city, x, z]): Place => ({ name, sub: city, x, z, kind: "company" })),
           ]

@@ -4,14 +4,15 @@ import { GlassButton, Icon } from "@yoga-auto/glass-ui";
 import { getScreen, registerScreen, registerWidget } from "../../core/registry.ts";
 import { useConnectionSelect, useRoute } from "../../core/store.ts";
 import { DestinationSheet, NextManeuver, RouteTargetBar, labelForPoint, loadPlaces, sendRouteTarget } from "../route/index.tsx";
-import { MapView, type MapControls } from "./MapView.tsx";
+import { MapView, loadViewMode, type MapControls } from "./MapView.tsx";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./map.css";
 
 function MapScreen() {
   const controls = useRef<MapControls | null>(null);
   const [follow, setFollow] = useState(true);
-  const [headingUp, setHeadingUp] = useState(false);
+  const [headingUp, setHeadingUp] = useState(() => loadViewMode("screen").headingUp);
+  const [tilt, setTilt] = useState(() => loadViewMode("screen").tilt);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pick, setPick] = useState<{ x: number; z: number; left: number; top: number; label: string } | null>(null);
   const canRoute = useConnectionSelect((c) => c.hello?.capabilities.route ?? false);
@@ -28,8 +29,10 @@ function MapScreen() {
       <MapView
         controlsRef={controls}
         zoom={14}
+        zoomKey="screen"
         onFollowChange={setFollow}
         onHeadingUpChange={setHeadingUp}
+        onTiltChange={setTilt}
         onLongPress={onLongPress}
       />
       <RouteOverlay />
@@ -91,8 +94,16 @@ function MapScreen() {
         />
         <GlassButton
           size="lg"
+          label="3D"
+          aria-label="Widok 3D"
+          active={tilt}
+          onPress={() => controls.current?.toggleTilt()}
+          data-testid="map-tilt"
+        />
+        <GlassButton
+          size="lg"
           icon={<Icon name="navigation" />}
-          aria-label="Podążaj za ciężarówką"
+          aria-label="Podążaj za pojazdem"
           active={follow}
           tone="accent"
           onPress={() => controls.current?.recenter()}
@@ -115,11 +126,77 @@ function RouteOverlay({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** Widget Home: mini-mapa (bez gestów, zawsze za ciężarówką) z trasą i najbliższym manewrem. */
+/**
+ * Mapa bez gestów (kafel Home, tło nawigacji) z przyciskami: obrót wg kierunku jazdy, widok 3D, −/+.
+ * Tryb i zoom zapamiętane per `viewKey`. Przyciski zatrzymują kliknięcie i przytrzymanie,
+ * żeby nie otwierać ekranu mapy z kafla ani nie wchodzić w edycję układu Home.
+ */
+function FollowMap({
+  viewKey,
+  zoom,
+  testid,
+  className,
+  bgClass,
+}: {
+  viewKey: string;
+  zoom: number;
+  testid: string;
+  className: string;
+  /** mapa jako tło w osobnym kontenerze (nawigacja); przyciski poza nim */
+  bgClass?: string;
+}) {
+  const controls = useRef<MapControls | null>(null);
+  const [headingUp, setHeadingUp] = useState(() => loadViewMode(viewKey).headingUp);
+  const [tilt, setTilt] = useState(() => loadViewMode(viewKey).tilt);
+  const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
+  const map = (
+    <MapView
+      interactive={false}
+      zoom={zoom}
+      zoomKey={viewKey}
+      controlsRef={controls}
+      onHeadingUpChange={setHeadingUp}
+      onTiltChange={setTilt}
+    />
+  );
+  return (
+    <>
+      {bgClass ? (
+        <div className={bgClass} aria-hidden="true">
+          {map}
+        </div>
+      ) : (
+        map
+      )}
+      <div className={`map-zoom ${className}`} onClick={stop} onPointerDown={stop} onKeyDown={stop} data-testid={testid}>
+        <GlassButton
+          size="sm"
+          icon={<Icon name="compass" />}
+          aria-label="Kierunek jazdy w górę"
+          active={headingUp}
+          onPress={() => controls.current?.toggleHeadingUp()}
+          data-testid={`${testid}-heading`}
+        />
+        <GlassButton
+          size="sm"
+          label="3D"
+          aria-label="Widok 3D"
+          active={tilt}
+          onPress={() => controls.current?.toggleTilt()}
+          data-testid={`${testid}-tilt`}
+        />
+        <GlassButton size="sm" icon={<Icon name="minus" />} aria-label="Oddal" onPress={() => controls.current?.zoomBy(-1)} data-testid={`${testid}-out`} />
+        <GlassButton size="sm" icon={<Icon name="plus" />} aria-label="Przybliż" onPress={() => controls.current?.zoomBy(1)} data-testid={`${testid}-in`} />
+      </div>
+    </>
+  );
+}
+
+/** Widget Home: mini-mapa (bez gestów, zawsze za ciężarówką) z trasą, najbliższym manewrem, obrotem, 3D i zoomem. */
 function MapWidget() {
   return (
     <div className="map-widget" data-testid="map-widget">
-      <MapView interactive={false} zoom={13} />
+      <FollowMap viewKey="home" zoom={13} testid="map-widget-zoom" className="map-zoom--widget" />
       <RouteOverlay compact />
     </div>
   );
@@ -130,9 +207,7 @@ function withMapBackground(Inner: ComponentType): ComponentType {
   function NavWithMap() {
     return (
       <div className="map-nav-wrap" data-testid="nav-map-bg">
-        <div className="map-nav-bg" aria-hidden="true">
-          <MapView interactive={false} zoom={13.5} />
-        </div>
+        <FollowMap viewKey="nav" zoom={13.5} testid="nav-map-zoom" className="map-zoom--nav" bgClass="map-nav-bg" />
         <div className="map-nav-fg">
           <Inner />
         </div>

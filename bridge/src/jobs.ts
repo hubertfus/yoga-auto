@@ -12,6 +12,8 @@ import type { GameEvent, JobConfig } from "@yoga-auto/protocol";
 export interface JobRecord {
   id: string;
   status: "delivered" | "cancelled";
+  /** `bus` = kurs autobusowy; brak (starsze wpisy) = ładunek */
+  kind?: "cargo" | "bus";
   cargo: string;
   /** kg */
   mass: number;
@@ -93,8 +95,12 @@ export class FileJobStorage implements JobStorage {
   }
 }
 
-const sig = (j: JobConfig) =>
-  `${j.cargoId}|${j.source.cityId}.${j.source.companyId}|${j.destination.cityId}.${j.destination.companyId}|${j.income}`;
+/** Tożsamość zlecenia; kurs autobusowy po całej linii (etapy zmieniają źródło/cel, ale to ten sam kurs). */
+const sig = (j: JobConfig) => {
+  const st = j.bus?.stages;
+  if (j.kind === "bus" && st?.length) return `bus|${st[0]!.from.id}|${st.at(-1)!.to.id}|${st.length}|${j.income}`;
+  return `${j.cargoId}|${j.source.cityId}.${j.source.companyId}|${j.destination.cityId}.${j.destination.companyId}|${j.income}`;
+};
 const place = (p: JobConfig["source"]) => ({ city: p.city, company: p.company });
 
 export class JobHistory {
@@ -108,14 +114,18 @@ export class JobHistory {
     this.now = now;
   }
 
-  /** `config.job` się zmienił (null = brak zlecenia). Nie kończy zlecenia — to robi `evt`. */
-  onJob(job: JobConfig | null, now: number = this.now()): void {
-    if (!job) return; // wynik zleceniu nadaje `evt`; zerowanie configu po evt/bez evt nie tworzy wpisu
+  /**
+   * `config.job` się zmienił (null = brak zlecenia). Nie kończy zlecenia — to robi `evt`.
+   * Zwraca true, gdy to nowe zlecenie (a nie aktualizacja bieżącego, np. kolejny etap kursu).
+   */
+  onJob(job: JobConfig | null, now: number = this.now()): boolean {
+    if (!job) return false; // wynik zleceniu nadaje `evt`; zerowanie configu po evt/bez evt nie tworzy wpisu
     if (this.active && sig(this.active.job) === sig(job)) {
       this.active.job = job;
-      return;
+      return false;
     }
     this.active = { job, startedAt: now };
+    return true;
   }
 
   /** Zdarzenie gry: dla `job.delivered`/`job.cancelled` zapisz wpis i zwróć go. */
@@ -128,6 +138,7 @@ export class JobHistory {
     const rec: JobRecord = {
       id: `${now.toString(36)}-${(this.seq++).toString(36)}`,
       status: delivered ? "delivered" : "cancelled",
+      ...((a?.job.kind ?? ev.jobKind) === "bus" ? { kind: "bus" as const } : {}),
       cargo: a?.job.cargo ?? "",
       mass: a?.job.mass ?? 0,
       from: a ? place(a.job.source) : null,

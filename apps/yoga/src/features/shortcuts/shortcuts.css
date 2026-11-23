@@ -25,8 +25,53 @@
   text-overflow: ellipsis;
   max-width: 100%;
 }
-.sc-tile--action .sc-tile__btn {
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
+/* kafel akcji: przycisk na całą powierzchnię karty (łącznie z jej marginesem wewnętrznym) */
+.sc-tile--action {
+  margin: calc(var(--s-4) * -1);
+  height: calc(100% + 2 * var(--s-4));
 }
+.sc-tile--action .sc-tile__btn.lg-button {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit !important;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-2);
+}
+.sc-tile--action { border-radius: var(--r-lg, 24px); }
+.sc-tile--action .sc-tile__btn::before { opacity: 0; }
+.sc-tile--action .sc-tile__btn .lg-button__icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  color: var(--tone);
+  background: color-mix(in oklch, var(--tone) 16%, transparent);
+  transition: background-color var(--dur-base) ease, color var(--dur-base) ease;
+}
+.sc-tile--action .sc-tile__btn .lg-button__icon svg { width: 34px; height: 34px; }
+.sc-tile--action .sc-tile__btn .lg-button__label {
+  font: var(--t-caption, 600 15px/1.2 system-ui);
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-tile--action .sc-tile__btn[data-pressed],
+.sc-tile--action .sc-tile__btn:active {
+  transform: scale(0.96);
+  background: color-mix(in oklch, var(--text-1) 8%, transparent);
+}
+.sc-tile--action .sc-tile__btn[data-active] {
+  background: color-mix(in oklch, var(--tone) 18%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--tone) 70%, transparent);
+  color: var(--text-1);
+}
+.sc-tile--action .sc-tile__btn[data-active] .lg-button__icon {
+  background: var(--tone-bg);
+  color: var(--tone-ink);
+  box-shadow: 0 0 22px color-mix(in oklch, var(--tone) 55%, transparent);
+}
+.sc-tile--action .sc-tile__btn[data-pending] { outline-offset: -4px; }

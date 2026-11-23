@@ -4,7 +4,7 @@
  * Koszt = czas przejazdu (`dur`), heurystyka = odległość w linii prostej / V_MAX (dopuszczalna dla dróg).
  */
 import { cumulative, pointAt, type Maneuver, type ManeuverKind } from "@yoga-auto/protocol";
-import { EDGE_FERRY, EDGE_ROAD, NODE_CITY, type RouteGraph } from "./graph.ts";
+import { EDGE_FERRY, EDGE_ROAD, NODE_CITY, edgeGeometry, type RouteGraph } from "./graph.ts";
 
 /** m/s — najszybsza droga w grze (heurystyka A*) */
 const V_MAX = 130 / 3.6;
@@ -332,34 +332,177 @@ export interface BuiltRoute {
 /** Okno pomiaru kąta skrętu przed/za skrzyżowaniem (m). */
 const TURN_WINDOW = 35;
 
+/**
+ * Przesunięcie boczne trasy (m, w prawo względem kierunku jazdy) w każdym węźle trasy: trasa biegnie pasem,
+ * którym się jedzie, a nie osią drogi (na dwujezdniowych oś to pas rozdzielający). Znane tam, gdzie węzeł
+ * sąsiaduje z przejazdem przez prefab z geometrią (jej koniec/początek leży na pasie); między nimi interpolacja
+ * po długości, na końcach — wartość najbliższa; bez danych 0 (oś). Ruch lewostronny wychodzi sam (ujemne).
+ */
+export function laneOffsets(g: RouteGraph, plan: PlannedRoute): number[] {
+  const S = plan.states.length;
+  const lat: number[] = new Array<number>(S).fill(Number.NaN);
+  const node = (si: number) => plan.states[si]! >> 1;
+  for (let i = 0; i + 1 < S; i++) {
+    const geo = edgeGeometry(g, plan.edges[i]!);
+    if (geo.length < 4) continue;
+    // kierunek jazdy w węźle: styczna drogi zorientowana jak ścieżka pasa w tym miejscu
+    const at = (si: number, px: number, pz: number, hx: number, hz: number) => {
+      const [tx, tz] = travelDir(g, plan, si, hx, hz);
+      const n = node(si);
+      const v = (px - g.x[n]!) * -tz + (pz - g.z[n]!) * tx;
+      lat[si] = Number.isNaN(lat[si]!) ? v : (lat[si]! + v) / 2;
+    };
+    const k = geo.length;
+    at(i, geo[0]!, geo[1]!, geo[2]! - geo[0]!, geo[3]! - geo[1]!);
+    at(i + 1, geo[k - 2]!, geo[k - 1]!, geo[k - 2]! - geo[k - 4]!, geo[k - 1]! - geo[k - 3]!);
+  }
+  // interpolacja po odległości między węzłami
+  const d: number[] = [0];
+  for (let si = 1; si < S; si++) d.push(d[si - 1]! + Math.hypot(g.x[node(si)]! - g.x[node(si - 1)]!, g.z[node(si)]! - g.z[node(si - 1)]!));
+  let last = -1;
+  for (let si = 0; si < S; si++) {
+    if (Number.isNaN(lat[si]!)) continue;
+    if (last < 0) for (let k = 0; k < si; k++) lat[k] = lat[si]!;
+    else
+      for (let k = last + 1; k < si; k++) {
+        const t = d[si]! > d[last]! ? (d[k]! - d[last]!) / (d[si]! - d[last]!) : 0;
+        lat[k] = lat[last]! + (lat[si]! - lat[last]!) * t;
+      }
+    last = si;
+  }
+  for (let k = Math.max(0, last + 1); k < S; k++) lat[k] = last >= 0 ? lat[last]! : 0;
+  return lat;
+}
+
+/**
+ * Kierunek jazdy w węźle stanu si: styczna z obrotu węzła zorientowana zgodnie z ruchem. Orientację daje
+ * podpowiedź (np. styczna ścieżki pasa), a bez niej odcinek dojazdu lub wyjazdu — ten, który lepiej zgadza się
+ * ze styczną (na skrzyżowaniu odcinek do sąsiada bywa prostopadły do drogi). Bez obrotu — sam odcinek.
+ */
+function travelDir(g: RouteGraph, plan: PlannedRoute, si: number, hx = 0, hz = 0): [number, number] {
+  const S = plan.states.length;
+  const n = plan.states[si]! >> 1;
+  const seg = (a: number, b: number): [number, number] => {
+    const p = plan.states[a]! >> 1;
+    const q = plan.states[b]! >> 1;
+    const vx = g.x[q]! - g.x[p]!;
+    const vz = g.z[q]! - g.z[p]!;
+    const L = Math.hypot(vx, vz) || 1;
+    return [vx / L, vz / L];
+  };
+  const cands: [number, number][] = [];
+  if (hx || hz) cands.push([hx, hz]);
+  else {
+    if (si > 0) cands.push(seg(si - 1, si));
+    if (si + 1 < S) cands.push(seg(si, si + 1));
+  }
+  const r = g.rot[n]!;
+  if (!Number.isFinite(r)) return cands[0] ?? [1, 0];
+  const tx = Math.cos(r);
+  const tz = Math.sin(r);
+  let best = 0;
+  for (const [vx, vz] of cands) {
+    const d = tx * vx + tz * vz;
+    if (Math.abs(d) > Math.abs(best)) best = d;
+  }
+  return best < 0 ? [-tx, -tz] : [tx, tz];
+}
+
+/** Punkt na pasie przy węźle stanu si: węzeł przesunięty w prawo (względem jazdy) o `lat` m. */
+function lanePoint(g: RouteGraph, plan: PlannedRoute, si: number, lat: number): [number, number] {
+  const n = plan.states[si]! >> 1;
+  const [tx, tz] = travelDir(g, plan, si);
+  return [g.x[n]! - tz * lat, g.z[n]! + tx * lat];
+}
+
+/** Przesuwa polilinię liniowo po długości tak, by zaczynała się w (sx, sz) i kończyła w (ex, ez). */
+function fitEnds(pts: number[], sx: number, sz: number, ex: number, ez: number): number[] {
+  const n = pts.length >> 1;
+  const dsx = sx - pts[0]!;
+  const dsz = sz - pts[1]!;
+  const dex = ex - pts[2 * n - 2]!;
+  const dez = ez - pts[2 * n - 1]!;
+  const cum = [0];
+  for (let k = 1; k < n; k++) cum.push(cum[k - 1]! + Math.hypot(pts[2 * k]! - pts[2 * k - 2]!, pts[2 * k + 1]! - pts[2 * k - 1]!));
+  const total = cum[n - 1]! || 1;
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const t = cum[k]! / total;
+    out.push(pts[2 * k]! + dsx * (1 - t) + dex * t, pts[2 * k + 1]! + dsz * (1 - t) + dez * t);
+  }
+  return out;
+}
+
+/** Przesuwa punkty polilinii [x, z, …] w prawo o lat0 → lat1 (liniowo po długości); styczne z różnic. */
+function offsetPolyline(pts: number[], lat0: number, lat1: number): number[] {
+  const n = pts.length >> 1;
+  if (n < 2 || (Math.abs(lat0) < 0.01 && Math.abs(lat1) < 0.01)) return pts;
+  const cum = [0];
+  for (let k = 1; k < n; k++) cum.push(cum[k - 1]! + Math.hypot(pts[2 * k]! - pts[2 * k - 2]!, pts[2 * k + 1]! - pts[2 * k - 1]!));
+  const total = cum[n - 1]! || 1;
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const a = Math.max(0, k - 1);
+    const b = Math.min(n - 1, k + 1);
+    let tx = pts[2 * b]! - pts[2 * a]!;
+    let tz = pts[2 * b + 1]! - pts[2 * a + 1]!;
+    const L = Math.hypot(tx, tz) || 1;
+    tx /= L;
+    tz /= L;
+    const o = lat0 + (lat1 - lat0) * (cum[k]! / total);
+    out.push(pts[2 * k]! - tz * o, pts[2 * k + 1]! + tx * o);
+  }
+  return out;
+}
+
 export function buildRoute(g: RouteGraph, plan: PlannedRoute, pose?: Pose): BuiltRoute {
-  // pełna polilinia przez węzły (z pozycją ciężarówki na początku)
+  // pełna polilinia środkiem pasa (z pozycją ciężarówki na początku)
   const raw: number[] = [];
   const rawCity: number[] = []; // per punkt: 1 = w mieście
+  const push = (x: number, z: number, city: number) => {
+    const n = raw.length >> 1;
+    if (n && Math.abs(raw[2 * n - 2]! - x) < 0.3 && Math.abs(raw[2 * n - 1]! - z) < 0.3) return;
+    raw.push(x, z);
+    rawCity.push(city);
+  };
   if (pose) {
     raw.push(pose.x, pose.z);
     rawCity.push(plan.states.length ? g.nodeFlags[plan.states[0]! >> 1]! & NODE_CITY : 0);
   }
+  const lat = laneOffsets(g, plan);
   const nodeAt: number[] = []; // indeks punktu dla stanu i
   for (let si = 0; si < plan.states.length; si++) {
     const node = plan.states[si]! >> 1;
-    const x = g.x[node]!;
-    const z = g.z[node]!;
-    // odcinek drogi z poprzedniego węzła: krzywa Hermite'a jak w grze (zamiast cięciwy ścinającej zakręty)
-    if (si > 0 && g.flags[plan.edges[si - 1]!]! & EDGE_ROAD) {
-      const prev = plan.states[si - 1]! >> 1;
-      const before = raw.length;
-      hermite(g, prev, node, raw);
-      for (let k = before; k < raw.length; k += 2) rawCity.push(g.nodeFlags[prev]! & NODE_CITY);
-    }
-    const n = raw.length >> 1;
-    if (n && raw[2 * n - 2] === x && raw[2 * n - 1] === z) {
-      nodeAt.push(n - 1);
+    const city = g.nodeFlags[node]! & NODE_CITY;
+    if (si === 0) {
+      const [px, pz] = lanePoint(g, plan, 0, lat[0]!);
+      push(px, pz, city);
+      nodeAt.push((raw.length >> 1) - 1);
       continue;
     }
-    nodeAt.push(n);
-    raw.push(x, z);
-    rawCity.push(g.nodeFlags[node]! & NODE_CITY);
+    // krawędź z poprzedniego węzła: zapisana geometria (przejazd przez prefab środkiem pasa po krzywych gry),
+    // odcinek drogi — krzywa Hermite'a jak w grze przesunięta na pas; inaczej prosto do węzła (na pasie)
+    const e = plan.edges[si - 1]!;
+    const prev = plan.states[si - 1]! >> 1;
+    const prevCity = g.nodeFlags[prev]! & NODE_CITY;
+    const geo = edgeGeometry(g, e);
+    if (geo.length >= 4) {
+      // końce dokładnie w punktach pasa węzłów (sąsiednie prefaby/drogi stykają się bez uskoku)
+      const [sx, sz] = lanePoint(g, plan, si - 1, lat[si - 1]!);
+      const [ex, ez] = lanePoint(g, plan, si, lat[si]!);
+      const fitted = fitEnds(Array.from(geo), sx, sz, ex, ez);
+      for (let k = 2; k + 1 < fitted.length - 2; k += 2) push(fitted[k]!, fitted[k + 1]!, prevCity);
+      push(fitted[fitted.length - 2]!, fitted[fitted.length - 1]!, city);
+    } else {
+      const seg: number[] = [g.x[prev]!, g.z[prev]!];
+      if (g.flags[e]! & EDGE_ROAD) hermite(g, prev, node, seg);
+      seg.push(g.x[node]!, g.z[node]!);
+      const off = offsetPolyline(seg, lat[si - 1]!, lat[si]!);
+      // pierwszy punkt to poprzedni węzeł (już w trasie)
+      for (let k = 2; k + 1 < off.length - 2; k += 2) push(off[k]!, off[k + 1]!, prevCity);
+      push(off[off.length - 2]!, off[off.length - 1]!, city);
+    }
+    nodeAt.push((raw.length >> 1) - 1);
   }
   const rawCum = cumulative(raw);
 

@@ -7,7 +7,7 @@
  * Konfiguracja: %APPDATA%\yoga-auto\config.json (port, host, fastHz, source, inputEnabled); flagi CLI mają pierwszeństwo.
  */
 import { networkInterfaces } from "node:os";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type TelemetrySource } from "@yoga-auto/protocol";
@@ -26,6 +26,7 @@ import { FileTripStorage } from "./trip.ts";
 import { FileJobStorage } from "./jobs.ts";
 import { PipeSource } from "./sources/pipe.ts";
 import { loadGraph, type RouteGraph } from "./route/graph.ts";
+import { cityCentersFrom } from "./route/service.ts";
 
 // ostatnia deska ratunku: nieobsłużone odrzucenie obietnicy nie może ubić procesu w Node 24
 process.on("unhandledRejection", (reason) => {
@@ -92,6 +93,17 @@ if (existsSync(routeGraphFile)) {
 } else {
   console.log(`[info] trasa GPS wyłączona: brak ${routeGraphFile} (npm run map:graph)`);
 }
+// środki miast (przystanki kursów autobusowych)
+let routeCities: Map<string, { x: number; z: number }> = new Map();
+const placesFile = join(tilesDir, "route-places.json");
+if (routeGraph && existsSync(placesFile)) {
+  try {
+    routeCities = cityCentersFrom(JSON.parse(readFileSync(placesFile, "utf8")));
+    if (!routeCities.size) console.warn("[warn] route-places.json bez tokenów miast — kursy autobusowe bez trasy (npm run map:graph -- --places-only)");
+  } catch (e) {
+    console.warn(`[warn] route-places.json: ${String(e)}`);
+  }
+}
 const mediaMode = resolveMediaMode(values, settings.source);
 const modules =
   mediaMode === "off"
@@ -117,9 +129,12 @@ const bridge = await startBridge({
   staticDir,
   tilesDir,
   routeGraph,
+  routeCities,
   tripStorage: new FileTripStorage(dir),
   tripBStorage: new FileTripStorage(dir, "b"),
   jobStorage: new FileJobStorage(dir),
+  // tylko dane z gry (mock/replay nie zaśmiecają pliku z nieopisanymi atrybutami SDK)
+  discoveryFile: settings.source === "pipe" ? join(dir, "sdk-discovery.jsonl") : null,
   modules,
   ...(recorder ? { recorder } : {}),
 });

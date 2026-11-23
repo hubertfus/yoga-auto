@@ -41,8 +41,9 @@ import { StateStore } from "./store.ts";
 import { ClientStream } from "./throttle.ts";
 import { MemoryTripStorage, TripComputer, type TripStorage } from "./trip.ts";
 import { JobHistory, MemoryJobStorage, type JobStorage } from "./jobs.ts";
+import { SdkDiscovery } from "./discovery.ts";
 import type { RouteGraph } from "./route/graph.ts";
-import { RouteService } from "./route/service.ts";
+import { RouteService, type CityCenters } from "./route/service.ts";
 
 /**
  * Hook nagrywania sesji (implementacja: `YarecRecorder` z tools/recorder, S7). Strukturalny, żeby
@@ -78,6 +79,8 @@ export interface BridgeOptions {
   tripBStorage?: TripStorage;
   /** historia zleceń (M4; domyślnie pamięć) */
   jobStorage?: JobStorage;
+  /** plik `sdk-discovery.jsonl` (nieopisane dane SDK, np. kursy autobusowe); brak = bez zapisu */
+  discoveryFile?: string | null;
   /** nadpisanie progów alertów (testy) */
   alertThresholds?: Partial<AlertThresholds>;
   /** okres przeliczania alertów/tripu, ms (domyślnie 250) */
@@ -89,6 +92,8 @@ export interface BridgeOptions {
   tilesDir?: string;
   /** graf dróg do trasy GPS (`route-graph.bin`); brak = bez trasy */
   routeGraph?: RouteGraph | null;
+  /** środki miast po tokenie (przystanki kursów autobusowych); z `route-places.json` */
+  routeCities?: CityCenters;
   modules?: BridgeModule[];
   /** false = komendy `cmd` odrzucane jako `input_disabled` (config.json: inputEnabled) */
   inputEnabled?: boolean;
@@ -158,6 +163,7 @@ export async function startBridge(opts: BridgeOptions) {
   const setTripB = () => store.setSlow("tripB" as keyof SlowState, tripB.state as never);
   setTripB();
   const jobs = new JobHistory(opts.jobStorage ?? new MemoryJobStorage());
+  const discovery = new SdkDiscovery(opts.discoveryFile ?? null, (msg) => log("info", msg));
 
   /** błąd rekordera (dysk pełny itp.) nie może zatrzymać bridge'a */
   const safeRecord = (fn: () => void) => {
@@ -188,7 +194,7 @@ export async function startBridge(opts: BridgeOptions) {
     send(c, { t: "snapshot", seq: c.stream.synced(store.state), ts: Date.now(), state: store.state });
   };
 
-  const routes = opts.routeGraph ? new RouteService(opts.routeGraph, log) : null;
+  const routes = opts.routeGraph ? new RouteService(opts.routeGraph, log, opts.routeCities) : null;
   const capabilities = {
     input: opts.inputEnabled !== false,
     media: modules.some((m) => m.capability === "media"),
@@ -245,14 +251,21 @@ export async function startBridge(opts: BridgeOptions) {
         flushImmediate();
         flushFast();
         return;
-      case "cfg":
+      case "cfg": {
+        discovery.record(m);
         applyConfig(store, m);
-        if (m.id === "job") jobs.onJob(store.state.config.job);
-        if (m.id === "job" && m.attrs && store.state.config.job) {
-          broadcast({ t: "event", ts: Date.now(), event: { kind: "job.started", job: store.state.config.job } });
+        const isJob = m.id === "job" || m.id === "bus_job";
+        const isNew = isJob && jobs.onJob(store.state.config.job);
+        // `job.started` tylko gdy ta konfiguracja jest teraz aktywnym zleceniem (kurs autobusowy przesłania ładunek);
+        // kurs autobusowy: tylko na początku kursu, nie przy każdym etapie
+        const job = store.state.config.job;
+        if (isJob && m.attrs && job && (job.kind === "bus") === (m.id === "bus_job") && (job.kind !== "bus" || isNew)) {
+          broadcast({ t: "event", ts: Date.now(), event: { kind: "job.started", job } });
         }
         break;
+      }
       case "evt": {
+        discovery.record(m);
         const ev = mapGameplayEvent(m);
         if (ev) {
           jobs.onEvent(ev);

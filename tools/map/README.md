@@ -50,12 +50,16 @@ SDK gry nie podaje trasy z nawigacji, więc bridge liczy ją sam (A* po grafie d
 Graf powstaje z tych samych danych parsera co kafle:
 1. `parser` (już w `map:build`) → `tools/map/.cache/parsed/europe-*.json`,
 2. `npx generator graph -m europe -i <parsed> -o tools/map/.cache/graph` (narzędzie truckermudgeon/maps),
-3. `npm run map:graph` → `tools/map/out/route-graph.bin` (~8 MB; format własny, opis w `bridge/src/route/graph.ts`),
+3. `npm run map:graph` → `tools/map/out/route-graph.bin` (~18 MB; format własny v4, opis w `bridge/src/route/graph.ts`),
    `route-places.json` (miasta i firmy do wyszukiwarki celu na tablecie) oraz `icons/*.png` (ikony POI na mapie: stacje, parkingi, serwisy, logo firm, numery dróg — z danych parsera).
 
 `map:build` robi kroki 2–3 automatycznie. Przy budowaniu w Dockerze (obraz z narzędziem): zamontuj katalog gry tylko do odczytu i `tools/map/.cache` jako `/work`, uruchom `npx parser -i /game -o /work/parsed` i `npx generator graph -m europe -i /work/parsed -o /work/graph`, potem na PC `npm run map:graph`.
 
 Cel trasy: firma docelowa zlecenia albo cel wybrany na tablecie (wyszukiwarka 🔍 na ekranie Mapa / „Wybierz cel” w Nawigacji, albo przytrzymanie palca na mapie → „Nawiguj tutaj”). SDK nie udostępnia celu ustawionego w GPS gry, więc jazdy bez zlecenia trzeba wskazać na tablecie. Nowe zlecenie zastępuje cel ręczny; postój przy celu kończy nawigację.
+
+Geometria trasy: drogi to krzywe Hermite'a jak w grze, a przejazdy przez prefaby (skrzyżowania, ronda, zjazdy, wjazdy do firm) idą po krzywych nawigacyjnych AI z opisów prefabów (`prefabPaths.ts`: dopasowanie prefabu do świata po węzłach, ciąg krzywych od pasów wjazdu do wyjazdu, środek przejezdnych pasów). Planner prowadzi trasę środkiem jezdni w kierunku jazdy (przesunięcie od osi drogi odczytane z końców tych ścieżek), więc nie ścina skrzyżowań i nie biegnie pasem rozdzielającym. Stary graf v3 (bez geometrii) nadal działa, tylko z cięciwami przez skrzyżowania.
+
+`npm run map:graph -- --places-only` odświeża sam `route-places.json` (miasta z tokenami — przystanki kursów autobusowych) bez przeliczania grafu.
 
 Bridge wczytuje `route-graph.bin` z katalogu kafli przy starcie (log: „trasa GPS: graf … węzłów”). Bez pliku trasa jest wyłączona, a tablet pokazuje „brak grafu dróg”. Po aktualizacji gry/DLC wygeneruj graf ponownie (nowe drogi i firmy).
 
